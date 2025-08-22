@@ -5,6 +5,6 @@ CORAL(clone oriented reconstruction of attractors in the landscape) is a project
 
 CORAL-base is the original version of CORAL, designed for one timepoint lineage tracing dataset analysis. By integrating lineage information, it provides an alternative way to define the boundary of a really 'heritable' cell state, rather than a 'cluster'. Then the 'CORAL'-like cell state tree enables a systematic analysis of 'memory genes' participating in many biology process. 
 
-1) CORAL tree construction:
+The original codes and example datasets are available in https://drive.google.com/drive/folders/1-cNiSKZFyVSs9Mndq87AcRXfaGweLesj?usp=sharing. 
 
-3) Evaluate the heritability mode of 'memory genes'：
+User-friendly package and tutorial is coming soon. 
