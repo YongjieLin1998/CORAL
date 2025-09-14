@@ -134,6 +134,23 @@ bigSparseDist_pairwise <- function(x, y) {
 #' )
 #' print(fluctuation_plot)
 #' }
+#' @title Run the Complete (Optimized) CORAL-base Ground Truth Analysis (v4 - Robust)
+#' @description This is the complete, robustly fixed version of the main CORAL analysis function.
+#' It includes a sanity check for metadata/matrix cell consistency and safeguards against
+#' data dimension reduction errors for single-cell clones.
+#'
+#' @param seurat_obj A Seurat object containing true clone IDs in its metadata.
+#' @param true_barcode_col A string specifying the column name in the metadata that contains the true lineage barcode IDs.
+#' @param clone_size_cutoff An integer. Clones smaller than this size will be excluded from the analysis. Defaults to `2`.
+#' @param num_states An integer. The number of CORAL states (i.e., clone clusters) to create. Defaults to `6`.
+#' @param hclust_method A string specifying the hierarchical clustering method to use. Defaults to `"ward.D"`. See `?hclust` for more options.
+#' @param min_gene_mean A numeric value used to filter out lowly expressed genes in the heritable gene analysis. Defaults to `0.05`.
+#' @param permutation_repeats An integer specifying the number of repeats for the permutation test. Defaults to `5`.
+#' @param n_cores An integer specifying the number of cores to use for parallel processing. Defaults to `parallel::detectCores() - 1`.
+#' @param down_sample A numeric value between 0 and 1 for downsampling clones. Defaults to `1` (no downsampling).
+#'
+#' @return An updated Seurat object with the analysis results stored in `@misc$CORAL_ground_truth_analysis`.
+#' @export
 run_coral_ground_truth_analysis <- function(
     seurat_obj,
     true_barcode_col,
@@ -147,60 +164,72 @@ run_coral_ground_truth_analysis <- function(
 ) {
   # --- 1. Prepare Barcode Data ---
   message("Step 1/6: Preparing barcode data...")
- if (!true_barcode_col %in% colnames(seurat_obj@meta.data)) {
-  stop(paste("Error: Barcode column '", true_barcode_col, "' not found in Seurat object metadata."))
-}
-
-# 确保列是字符类型，以便正确处理NA
-seurat_obj@meta.data[[true_barcode_col]] <- as.character(seurat_obj@meta.data[[true_barcode_col]])
-
-barcode_before_filter <- seurat_obj@meta.data[[true_barcode_col]]
-barcode_before_filter[is.na(barcode_before_filter)] <- "0" # 使用字符串 "0" 来标记NA
+  if (!true_barcode_col %in% colnames(seurat_obj@meta.data)) {
+    stop(paste("Error: Barcode column '", true_barcode_col, "' not found in Seurat object metadata."))
+  }
+  seurat_obj@meta.data[[true_barcode_col]] <- as.character(seurat_obj@meta.data[[true_barcode_col]])
+  barcode_before_filter <- seurat_obj@meta.data[[true_barcode_col]]
+  barcode_before_filter[is.na(barcode_before_filter)] <- "0"
   unique_barcodes <- unique(barcode_before_filter)
   barcode_map <- setNames(seq_along(unique_barcodes), unique_barcodes)
   barcode <- unname(barcode_map[barcode_before_filter])
   barcode <- as.factor(barcode)
   seurat_obj <- AddMetaData(seurat_obj, barcode, col.name = "coral_barcode_numeric")
-
   barcode_sta_df <- as.data.frame(sort(table(barcode), decreasing = TRUE))
-unlabeled_numeric_id <- barcode_map["0"]
-if (!is.na(unlabeled_numeric_id)) {
-  message(paste("Removing unlabeled group (numeric ID:", unlabeled_numeric_id, ") from analysis..."))
-  # 首先要重命名列，才能使用 BarcodeID 进行过滤
-  colnames(barcode_sta_df) <- c("BarcodeID", "Freq") 
-  barcode_sta_df <- barcode_sta_df[barcode_sta_df$BarcodeID != as.character(unlabeled_numeric_id), ]
-} else {
-  # 如果没有NA/0组，也要确保列名被设置
   colnames(barcode_sta_df) <- c("BarcodeID", "Freq")
-}
-  colnames(barcode_sta_df) <- c("BarcodeID", "Freq")
-
+  unlabeled_numeric_id <- barcode_map["0"]
+  if (!is.na(unlabeled_numeric_id)) {
+    barcode_sta_df <- barcode_sta_df[barcode_sta_df$BarcodeID != as.character(unlabeled_numeric_id), ]
+  }
   if (down_sample < 1 && down_sample > 0) {
     message(paste("Downsampling clones to", down_sample * 100, "%..."))
-    barcode_sta_df <- barcode_sta_df[sample(nrow(barcode_sta_df), ceiling(down_sample * nrow(barcode_sta_df)), replace = FALSE), ]
+    barcode_sta_df <- barcode_sta_df[sample(nrow(barcode_sta_df), ceiling(down_sample * nrow(barcode_sta_df))), ]
     barcode_sta_df <- barcode_sta_df[order(barcode_sta_df$Freq, decreasing = TRUE), ]
   }
 
   # --- 2. OPTIMIZED Clone-Clone Energy Distance Calculation ---
   message("Step 2/6: Calculating clone-clone energy distance (Memory-Optimized)...")
-  efficient_clones <- barcode_sta_df$BarcodeID[barcode_sta_df$Freq >= clone_size_cutoff]
-  final_clone_number <- length(efficient_clones)
-  if(final_clone_number < 2) stop("Fewer than 2 clones remaining after applying clone_size_cutoff. Cannot proceed.")
+  
+  # Initial filtering based on metadata counts
+  efficient_clones_initial <- barcode_sta_df$BarcodeID[barcode_sta_df$Freq >= clone_size_cutoff]
+  if(length(efficient_clones_initial) < 1) stop("No clones found with size >= clone_size_cutoff based on metadata.")
+  
+  efficient_clone_index <- seurat_obj$coral_barcode_numeric %in% efficient_clones_initial
+  
+  if(sum(efficient_clone_index) == 0) {
+      stop("No cells remain after filtering for efficient clones. Check for inconsistencies between metadata and assay data.")
+  }
 
-  barcode_sta_df_filtered <- barcode_sta_df[barcode_sta_df$BarcodeID %in% efficient_clones, ]
-
-  efficient_clone_index <- seurat_obj$coral_barcode_numeric %in% efficient_clones
-sc_expression <- Seurat::GetAssayData(seurat_obj, assay = "RNA", layer = "data")[, efficient_clone_index]
+  sc_expression <- Seurat::GetAssayData(seurat_obj, assay = "RNA", layer = "data")[, efficient_clone_index, drop = FALSE]
   barcode_used <- seurat_obj$coral_barcode_numeric[efficient_clone_index]
+
+  # --- [ROBUSTNESS FIX]: Sanity check and re-filter clones ---
+  message("  - Verifying clone sizes against the expression matrix...")
+  true_freq_in_matrix <- as.data.frame(table(barcode_used))
+  colnames(true_freq_in_matrix) <- c("BarcodeID", "TrueFreq")
+  
+  barcode_sta_df_merged <- merge(barcode_sta_df, true_freq_in_matrix, by = "BarcodeID", all.x = TRUE)
+  barcode_sta_df_merged$TrueFreq[is.na(barcode_sta_df_merged$TrueFreq)] <- 0
+  
+  final_efficient_clones <- barcode_sta_df_merged$BarcodeID[barcode_sta_df_merged$TrueFreq >= clone_size_cutoff]
+  
+  final_clone_number <- length(final_efficient_clones)
+  if(final_clone_number < 2) stop(paste("Fewer than 2 clones remaining after verifying sizes against the expression matrix. Initial clones:", length(efficient_clones_initial), "Final clones:", final_clone_number))
+  
+  message(paste("  - Initial clones passing cutoff:", length(efficient_clones_initial), "| Final valid clones after verification:", final_clone_number))
+  
+  final_index_in_barcode_used <- barcode_used %in% final_efficient_clones
+  sc_expression <- sc_expression[, final_index_in_barcode_used, drop = FALSE]
+  barcode_used <- droplevels(barcode_used[final_index_in_barcode_used]) # droplevels is good practice
+  barcode_sta_df_filtered <- subset(barcode_sta_df_merged, BarcodeID %in% final_efficient_clones)
+  # --- [END OF FIX] ---
 
   index_map <- split(seq_along(barcode_used), barcode_used)
   clone_indices <- lapply(as.character(barcode_sta_df_filtered$BarcodeID), function(id) index_map[[id]])
-  denominators <- barcode_sta_df_filtered$Freq * (barcode_sta_df_filtered$Freq - 1)
+  denominators <- barcode_sta_df_filtered$TrueFreq * (barcode_sta_df_filtered$TrueFreq - 1)
   denominators[denominators <= 0] <- 1
 
-  if (is.null(n_cores)) {
-      n_cores <- max(1, parallel::detectCores() - 1)
-  }
+  if (is.null(n_cores)) n_cores <- max(1, parallel::detectCores() - 1)
   cl <- parallel::makeCluster(n_cores)
   doParallel::registerDoParallel(cl)
 
@@ -211,31 +240,33 @@ sc_expression <- Seurat::GetAssayData(seurat_obj, assay = "RNA", layer = "data")
       .export = c("bigSparseDist", "bigSparseDist_pairwise")
   ) %dopar% {
     row <- numeric(final_clone_number)
-    sub_matrix_i_T <- t(sc_expression[, clone_indices[[i]]])
+    sub_matrix_i_T <- t(sc_expression[, clone_indices[[i]], drop = FALSE])
 
     for (j in i:final_clone_number) {
       if (i == j) {
         if (nrow(sub_matrix_i_T) > 1) {
-            dist_block <- bigSparseDist(sub_matrix_i_T)
-            row[j] <- sum(dist_block) / denominators[i]
+          row[j] <- sum(bigSparseDist(sub_matrix_i_T)) / denominators[i]
         } else {
-            row[j] <- 0
+          row[j] <- 0
         }
       } else {
-        sub_matrix_j_T <- t(sc_expression[, clone_indices[[j]]])
-        dist_block <- bigSparseDist_pairwise(sub_matrix_i_T, sub_matrix_j_T)
-        row[j] <- mean(dist_block)
+        sub_matrix_j_T <- t(sc_expression[, clone_indices[[j]], drop = FALSE])
+        row[j] <- mean(bigSparseDist_pairwise(sub_matrix_i_T, sub_matrix_j_T))
       }
     }
     row
   }
   parallel::stopCluster(cl)
-
+  
   clone_dist <- matrix(0, nrow = final_clone_number, ncol = final_clone_number)
-  for (i in 1:final_clone_number) {
-    non_zero_indices <- which(clone_dist_rows[[i]] != 0)
-    clone_dist[i, non_zero_indices] <- clone_dist_rows[[i]][non_zero_indices]
-  }
+    # The result from foreach is a list of rows, so we combine them into a matrix
+    if (is.list(clone_dist_rows)) {
+        clone_dist <- do.call(rbind, clone_dist_rows)
+    } else {
+        # If it's already a matrix (e.g., from older foreach versions)
+        clone_dist <- clone_dist_rows
+    }
+
   clone_dist[lower.tri(clone_dist)] <- t(clone_dist)[lower.tri(clone_dist)]
 
   diag_clone <- diag(clone_dist)
@@ -277,10 +308,10 @@ sc_expression <- Seurat::GetAssayData(seurat_obj, assay = "RNA", layer = "data")
   SSw <- Matrix::rowSums((sc_expression - lineage_mean_expression)^2)
 
   SS <- data.frame(SSt = SSt, SSw = SSw, SSb = SSt - SSw, Mean = mean_expression, name = rownames(sc_expression))
-  SS$Omega_square <- (SSt * (cell_total - lineage_number_actual) - cell_total * SSw) / (SSt * (cell_total - lineage_number_actual) + SSw)
+  SS$Omega_square <- (SS$SSb / (cell_total - lineage_number_actual)) / (SS$SSt / (cell_total - 1))
   SS$CV <- sqrt(SS$SSt / SS$Mean) / sqrt(cell_total)
   SS_filter <- subset(SS, Mean > min_gene_mean)
-
+  
   message("  - Running parallel permutation test for Omega-squared threshold...")
   cl <- parallel::makeCluster(n_cores)
   doParallel::registerDoParallel(cl)
@@ -294,7 +325,8 @@ sc_expression <- Seurat::GetAssayData(seurat_obj, assay = "RNA", layer = "data")
       )
       fake_mean_expr <- fake_means[, match(as.character(barcode_fake), names(fake_indices))]
       SSw_fake <- Matrix::rowSums((sc_expression - fake_mean_expr)^2)
-      (SSt * (cell_total - lineage_number_actual) - cell_total * SSw_fake) / (SSt * (cell_total - lineage_number_actual) + SSw_fake)
+      SSb_fake <- SSt - SSw_fake
+      (SSb_fake / (cell_total - lineage_number_actual)) / (SSt / (cell_total - 1))
   }
   parallel::stopCluster(cl)
   omega_square_fake <- unlist(omega_square_fake_list)
