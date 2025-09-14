@@ -37,6 +37,7 @@ library(CORAL)
 library(Seurat)
 library(ComplexHeatmap)
 library(ggplot2)
+library(ggpubr)
 
 # This guide assumes `seurat_obj` is already in your environment.
 # Let's inspect its metadata to confirm the required columns are present.
@@ -100,6 +101,16 @@ head(seurat_obj@misc$CORAL_ground_truth_analysis$heritable_genes_df)
 
 CORAL-base provides a suite of plotting functions to explore the final analysis output.
 
+##### Visualizing CORAL States on the MDS Plot
+A core visualization is to view the relationships between clones in a 2D space using MDS. The `visualize_clone_mds` function can then color each clone by its assigned CORAL state, revealing the structure of the clonal hierarchy.
+
+```r
+# Visualize the MDS embedding of clones, colored by their assigned CORAL state.
+# The function uses `color_by = "coral_state"` by default.
+p_mds_by_state <- visualize_clone_mds(seurat_obj)
+print(p_mds_by_state)
+```
+
 ##### Clone Energy Distance Heatmap
 This heatmap displays the transcriptional similarity between all clones. The clustering reveals clone groupings, which are now partitioned into 6 CORAL states.
 
@@ -109,16 +120,7 @@ ht <- visualize_clone_distance_heatmap(seurat_obj)
 ComplexHeatmap::draw(ht)
 ```
 
-##### Heritable Gene Distribution
-This plot is a key diagnostic tool that compares the observed distribution of Omega-squared values (heritability effect size) against the null distribution from permutations.
-
-```r
-# Compare the observed vs. null distribution of Omega-squared
-p_dist <- plot_heritable_gene_distribution(seurat_obj)
-print(p_dist)
-```
-
-##### Confusion Matrix: CORAL States vs. Cell Types
+##### Confusion Matrix: CORAL States vs. Metadata
 This heatmap shows the correspondence between our 6 lineage-defined CORAL states and any other pre-existing cell annotation, such as cell type.
 
 ```r
@@ -131,6 +133,15 @@ p_confusion <- plot_state_celltype_confusion(
 ComplexHeatmap::draw(p_confusion)
 ```
 
+##### Heritable Gene Distribution
+This plot is a key diagnostic tool that compares the observed distribution of Omega-squared values (heritability effect size) against the null distribution from permutations.
+
+```r
+# Compare the observed vs. null distribution of Omega-squared
+p_dist <- plot_heritable_gene_distribution(seurat_obj)
+print(p_dist)
+```
+
 ##### Gene Fluctuation Mode Plot
 This plot visualizes the relationship between a gene's heritability effect size (Omega-squared) and its fluctuation pattern (`omega_area`), revealing genes with distinct modes of inheritance.
 
@@ -138,10 +149,47 @@ This plot visualizes the relationship between a gene's heritability effect size 
 # Visualize the gene fluctuation mode
 p_fluctuation <- plot_gene_fluctuation_mode(
   seurat_obj,
-  genes_to_highlight = c("GATA1", "PAX5", "CD34") # Highlight genes of interest
+  genes_to_highlight = c("EGFR", "ARF5", "CSAG1") # Highlight genes of interest
 )
 print(p_fluctuation)
 ```
+
+#### Visualizing Gene Expression on the MDS Plot
+This function colors the MDS clone projection by the pseudobulk expression of a specific gene, providing an intuitive view of a gene's expression across different CORAL states.
+
+```r
+# Find a top heritable gene to visualize
+heritable_genes_df <- seurat_obj@misc$CORAL_ground_truth_analysis$heritable_genes_df
+top_gene <- heritable_genes_df[which.max(heritable_genes_df$Omega_square), "name"]
+
+# Now, visualize its expression on the MDS plot with a simplified call
+p_gene_mds <- visualize_gene_mds(
+  seurat_obj,
+  gene = top_gene
+)
+print(p_gene_mds)
+```
+
+#### Plotting a Gene's Omega-squared Fluctuation Curve
+This function plots how a specific gene's Omega-squared value changes as the clone clustering hierarchy is traversed, revealing the gene's heritability structure.
+
+```r
+# Plot the fluctuation curve for the same top heritable gene
+p_omega_curve <- plot_gene_omega_curve(seurat_obj, gene = top_gene)
+print(p_omega_curve)
+```
+
+#### Creating a Comprehensive Gene Dashboard
+This powerful function combines multiple key visualizations for a single gene (fluctuation curve, UMAP feature plot, MDS expression plot, and ridge plot) into a single dashboard, offering a holistic view of its heritability and expression patterns.
+
+```r
+p_dashboard <- plot_gene_dashboard(
+  seurat_obj,
+  gene = top_gene
+)
+print(p_dashboard)
+```
+
 
 ---
 
@@ -154,3 +202,15 @@ Lin, Y., Chen, X., Wu, L., Zhou, Y., & Lin, Y. (2025). Widespread transcriptiona
 The original codes and example datasets of the [initial manuscript](https://www.biorxiv.org/content/10.1101/2025.08.21.671653v1.full) are available in this [Google Drive folder](https://drive.google.com/drive/folders/1-cNiSKZFyVSs9Mndq87AcRXfaGweLesj?usp=sharing).
 
 We noted that the original codes can be much slower than the current version. 
+
+---
+
+### Development Tools
+
+This project leverages modern development tools to ensure code quality and consistency. Generative AI (such as GitHub Copilot) is used as an assistant for tasks including:
+
+* **Code Formatting**: Ensuring a consistent style across the codebase.
+* **Comment Generation**: Improving code readability and documentation.
+* **Proofreading**: Refining documentation and text within the project.
+
+All critical logic and architectural decisions are developer-led and reviewed.
