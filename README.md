@@ -131,7 +131,7 @@ This heatmap shows the correspondence between our 6 lineage-defined CORAL states
 # Assumes a 'cell_type' column exists in your metadata
 p_confusion <- plot_state_celltype_confusion(
   seurat_obj,
-  celltype_col = "cell_type"
+  celltype_col = "startID"
 )
 ComplexHeatmap::draw(p_confusion)
 ```
