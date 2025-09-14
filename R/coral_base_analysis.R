@@ -10,6 +10,7 @@
 
 #' @import Seurat
 #' @import ggplot2
+#' @import Matrix
 #' @importFrom Matrix rowSums colSums
 #' @importFrom stats cmdscale quantile aggregate IQR median na.omit
 #' @importFrom utils txtProgressBar setTxtProgressBar
