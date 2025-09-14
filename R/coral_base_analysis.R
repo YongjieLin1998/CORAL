@@ -648,25 +648,22 @@ plot_state_celltype_confusion <- function(seurat_obj, celltype_col, ...) {
 }
 
 
-#' @title Analyze Gene Fluctuation Mode (V5, Replicates Original Script Logic)
-#' @description This version is highly optimized and calculates both the gene-specific
-#' fluctuation area (`omega_area`) and the 'global_omega_area' based on the overall
-#' clone distance hierarchy, replicating the logic from the original manuscript's script.
-#' It performs hierarchical clustering only once, then uses cutree() to get all
-#' cluster assignments, leading to a massive speed improvement.
+#' @title Analyze Gene Fluctuation Mode (Highly Optimized)
+#' @description This optimized version performs hierarchical clustering only once,
+#' then uses cutree() to efficiently get all cluster assignments for calculating
+#' gene-specific fluctuation metrics (`omega_area`).
 #'
 #' @param seurat_obj A Seurat object that has been processed by `run_coral_ground_truth_analysis`.
 #' @param n_cores An integer specifying the number of cores to use for parallel processing.
 #'
-#' @return An updated Seurat object with fluctuation analysis results, including
-#' the new `global_omega_area` value in the `misc` slot.
+#' @return An updated Seurat object with fluctuation analysis results.
 #'
 #' @export
 analyze_gene_fluctuation <- function(seurat_obj, n_cores = NULL) {
     if (is.null(seurat_obj@misc$CORAL_ground_truth_analysis)) {
         stop("Please run 'run_coral_ground_truth_analysis' first.")
     }
-    message("Starting advanced analysis: Gene Fluctuation Mode (Optimized, Original Logic)...")
+    message("Starting advanced analysis: Gene Fluctuation Mode (Optimized Version)...")
 
     res <- seurat_obj@misc$CORAL_ground_truth_analysis
     clone_dist_E <- res$clone_energy_distance
@@ -686,49 +683,9 @@ analyze_gene_fluctuation <- function(seurat_obj, n_cores = NULL) {
     cell_total <- length(barcode_used)
     n_genes_anova <- nrow(sc_expression_ANOVA)
 
-    # --- [OPTIMIZATION]: Perform clustering ONCE outside the loop ---
     message("  - Performing hierarchical clustering once...")
     hclust_result <- stats::hclust(as.dist(clone_dist_E), method = res$parameters$hclust_method)
 
-    # --- [NEW LOGIC]: Calculate Global Omega Area ---
-    message("  - Calculating global omega area from distance hierarchy...")
-    # This calculation requires the full distance matrix between clones.
-    all_partitions_global <- stats::cutree(hclust_result, k = 1:lineage_total)
-
-    Distance_barcode_cluster <- sapply(1:lineage_total, function(k) {
-        # Get cluster assignments for k clusters
-        clusters <- all_partitions_global[, k]
-        # Calculate the sum of mean intra-cluster distances
-        sum(sapply(1:k, function(i) {
-            clone_indices_in_cluster <- which(clusters == i)
-            # Proceed if cluster is not empty or a singleton
-            if (length(clone_indices_in_cluster) > 1) {
-                sub_dist_matrix <- clone_dist_E[clone_indices_in_cluster, clone_indices_in_cluster]
-                # Use the mean intra-cluster distance
-                sum(sub_dist_matrix[upper.tri(sub_dist_matrix)]) / choose(length(clone_indices_in_cluster), 2)
-            } else {
-                0
-            }
-        }))
-    })
-    
-    # The total distance is the mean distance between all clones
-    Distance_total <- mean(clone_dist_E[upper.tri(clone_dist_E)])
-    Distance_barcode_cluster[1] <- Distance_total
-
-    df_for_global_calc <- data.frame(k = 1:lineage_total, dist = Distance_barcode_cluster)
-
-    df_for_global_calc$omegasquare <- ( (cell_total - df_for_global_calc$k) * Distance_total - cell_total * df_for_global_calc$dist ) /
-                                      ( (cell_total - df_for_global_calc$k) * Distance_total + cell_total * df_for_global_calc$dist )
-
-    global_omega_area <- (sum(df_for_global_calc$omegasquare / df_for_global_calc$omegasquare[lineage_total], na.rm=TRUE) - sum( (0:(lineage_total-1)) / (lineage_total-1) )) / lineage_total
-    
-    # Store this new value in the results
-    seurat_obj@misc$CORAL_ground_truth_analysis$global_omega_area <- global_omega_area
-    message(paste("  - Calculated global_omega_area:", round(global_omega_area, 4)))
-    # --- End of Global Omega Area Calculation ---
-
-    # --- [V4 OPTIMIZED LOGIC]: Calculate Gene-level SSw ---
     message("  - Pre-calculating all cluster partitions for gene analysis...")
     all_partitions_genes <- stats::cutree(hclust_result, k = 1:(lineage_total - 1))
     
@@ -793,7 +750,6 @@ analyze_gene_fluctuation <- function(seurat_obj, n_cores = NULL) {
     message("Gene fluctuation analysis complete.")
     return(seurat_obj)
 }
-
 
 #' @title Visualize Gene Expression on Clone MDS Plot
 #' @description Overlays the pseudobulk expression of a specific gene onto the
@@ -1028,12 +984,11 @@ plot_gene_dashboard <- function(seurat_obj,
   return(final_plot)
 }
 
-#' @title Plot Gene Fluctuation Mode (Original Script Logic)
+#' @title Plot Gene Fluctuation Mode
 #' @description Creates a scatter plot visualizing the gene fluctuation mode.
-#' This version uses the calculated `global_omega_area` as the vertical
-#' reference line, replicating the original manuscript's analysis.
+#' This version includes a reference line for the significance threshold (y-axis).
 #'
-#' @param seurat_obj A Seurat object run through the updated `analyze_gene_fluctuation`.
+#' @param seurat_obj A Seurat object that has been run through `analyze_gene_fluctuation`.
 #' @param n_genes_to_show An integer. Number of top genes to display.
 #' @param genes_to_highlight A character vector of specific gene names to label.
 #'
@@ -1045,15 +1000,6 @@ plot_gene_fluctuation_mode <- function(seurat_obj, n_genes_to_show = 1000, genes
     }
     
     results <- seurat_obj@misc$CORAL_ground_truth_analysis
-    
-    # --- [KEY CHANGE]: Read the global_omega_area from the results ---
-    if (is.null(results$global_omega_area)) {
-        warning("`global_omega_area` not found. Using x=0 as a fallback reference line.")
-        global_omega_area_val <- 0
-    } else {
-        global_omega_area_val <- results$global_omega_area
-    }
-
     plot_df <- results$heritable_genes_df
     plot_df <- plot_df[!is.na(plot_df$omega_area), ]
     plot_df <- plot_df[order(-plot_df$Omega_square), ]
@@ -1066,10 +1012,12 @@ plot_gene_fluctuation_mode <- function(seurat_obj, n_genes_to_show = 1000, genes
     threshold <- results$heritable_genes_threshold
 
     p <- ggplot(plot_df_subset, aes(x = .data$omega_area, y = .data$Omega_square)) +
+        # Only the horizontal line for the heritability threshold remains
         geom_hline(yintercept = threshold, linetype = "dashed", color = "red", size = 0.8) +
-        # --- [KEY CHANGE]: Use the calculated global_omega_area as the intercept ---
-        geom_vline(xintercept = global_omega_area_val, linetype = "dashed", color = "black", size = 1) +
         
+        # The geom_vline for the global reference has been removed
+        
+        # Scatter plot layers
         geom_point(color = "grey30", size = 2, alpha = 0.8) +
         geom_point(data = label_df, color = "salmon", size = 3) +
         ggrepel::geom_label_repel(data = label_df, aes(label = .data$name),
@@ -1078,7 +1026,7 @@ plot_gene_fluctuation_mode <- function(seurat_obj, n_genes_to_show = 1000, genes
         labs(x = "Normalized AUC Shape (omega_area)",
              y = "Lineage Effect Size (Omega-squared)",
              title = "Gene Fluctuation Mode",
-             subtitle = "Red line: Heritability threshold; Black line: Global fluctuation mode")
+             subtitle = "Red dashed line indicates heritability threshold") # Updated subtitle
     
     return(p)
 }
