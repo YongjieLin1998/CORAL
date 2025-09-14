@@ -2,7 +2,6 @@
 
 CORAL (Clone Oriented Reconstruction of Attractors in the Landscape) is a project for heritable cell state identification and gene expression dynamics inference, mainly based on the lineage tracing strategy.
 
----
 
 ## CORAL-base
 
