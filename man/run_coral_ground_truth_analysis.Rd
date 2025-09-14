@@ -29,13 +29,17 @@ run_coral_ground_truth_analysis(
 
 \item{min_gene_mean}{A numeric value used to filter out lowly expressed genes in the heritable gene analysis. Defaults to `0.05`.}
 
-\item{permutation_repeats}{An integer specifying the number of repeats for the permutation test to determine the Omega-squared significance threshold. Defaults to `5`.}
+\item{permutation_repeats}{An integer specifying the number of repeats for the permutation test. Defaults to `5`.}
 
 \item{n_cores}{An integer specifying the number of cores to use for parallel processing. Defaults to `parallel::detectCores() - 1`.}
 
-\item{down_sample}{A numeric value between 0 and 1 for downsampling clones, primarily for quick testing. Defaults to `1` (no downsampling).}
+\item{down_sample}{A numeric value between 0 and 1 for downsampling clones. Defaults to `1` (no downsampling).}
 }
 \value{
+An updated Seurat object with the analysis results stored in `@misc$CORAL_ground_truth_analysis`.
+
+An updated Seurat object with the analysis results stored in `@misc$CORAL_ground_truth_analysis`.
+
 An updated Seurat object with the analysis results stored in `@misc$CORAL_ground_truth_analysis`.
 }
 \description{
@@ -44,6 +48,14 @@ This is the main wrapper function for the `coral.base` analysis module.
   making it scalable to large datasets. It analyzes the structure of known lineage
   tracing clones, defines CORAL states, and identifies "heritable genes". All
   results are stored in the Seurat object's misc slot under `CORAL_ground_truth_analysis`.
+
+This is the complete, robustly fixed version of the main CORAL analysis function.
+It includes a sanity check for metadata/matrix cell consistency and safeguards against
+data dimension reduction errors for single-cell clones.
+
+This is the complete, robustly fixed version of the main CORAL analysis function.
+It includes a sanity check for metadata/matrix cell consistency and safeguards against
+data dimension reduction errors for single-cell clones.
 }
 \examples{
 \dontrun{
