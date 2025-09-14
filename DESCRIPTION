@@ -1,0 +1,38 @@
+Package: CORAL
+Type: Package
+Title: Identify Structurally Correlated Genes in Single-Cell Data (CPU Version)
+Version: 5.0.0
+Author: Your Name <your.email@example.com>
+Maintainer: Your Name <your.email@example.com>
+Description: A scalable pipeline for identifying genes whose expression patterns define an underlying structure or state within a single-cell population.
+License: MIT
+Encoding: UTF-8
+LazyData: true
+Imports: 
+    Seurat,
+    dplyr,
+    magrittr,
+    foreach,
+    stringr,
+    purrr,
+    matrixStats,
+    dbscan,
+    kernlab,
+    bigmemory,
+    RhpcBLASctl,
+    Matrix,
+    doSNOW,
+    doRNG,
+    ggplot2,
+    pROC,
+    patchwork,
+    tibble,
+    RColorBrewer,
+    ggrepel,
+    rlang
+Suggests:
+    devtools,
+    roxygen2,
+    testthat,
+    scCustomize
+RoxygenNote: 7.3.2
