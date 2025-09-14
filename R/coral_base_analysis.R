@@ -381,10 +381,10 @@ run_coral_ground_truth_analysis <- function(
   return(seurat_obj)
 }
 
-#' @title Analyze Gene Fluctuation Mode (V4, Highly Optimized & Corrected)
-#' @description This version is highly optimized to avoid redundant computations.
-#' It performs hierarchical clustering only once, then uses cutree() to
-#' get all cluster assignments, leading to a massive speed improvement.
+#' @title Analyze Gene Fluctuation Mode (Highly Optimized)
+#' @description This optimized version performs hierarchical clustering only once,
+#' then uses cutree() to efficiently get all cluster assignments for calculating
+#' gene-specific fluctuation metrics (`omega_area`).
 #'
 #' @param seurat_obj A Seurat object that has been processed by `run_coral_ground_truth_analysis`.
 #' @param n_cores An integer specifying the number of cores to use for parallel processing.
@@ -416,25 +416,15 @@ analyze_gene_fluctuation <- function(seurat_obj, n_cores = NULL) {
     cell_total <- length(barcode_used)
     n_genes_anova <- nrow(sc_expression_ANOVA)
 
-    # --- [OPTIMIZATION 1]: Perform clustering ONCE outside the loop ---
     message("  - Performing hierarchical clustering once...")
-    
-    # --- [CORRECTION]: Use the standard `stats::hclust` for full compatibility with "ward.D" ---
     hclust_result <- stats::hclust(as.dist(clone_dist_E), method = res$parameters$hclust_method)
+
+    message("  - Pre-calculating all cluster partitions for gene analysis...")
+    all_partitions_genes <- stats::cutree(hclust_result, k = 1:(lineage_total - 1))
     
-    # --- [OPTIMIZATION 2]: Get all cluster partitions ONCE using cutree ---
-    message("  - Pre-calculating all cluster partitions...")
-    # This matrix will have clones as rows and k (number of clusters) as columns
-    all_partitions <- stats::cutree(hclust_result, k = 1:(lineage_total - 1))
-    
-    # The row order of `all_partitions` matches `hclust_result$labels`, which are the clone BarcodeIDs
-    # We need to map these clone-level partitions to each cell.
-    # Create a mapping vector: from original BarcodeID to its position in the hclust result
     clone_id_map <- match(as.character(barcode_sta_df$BarcodeID), hclust_result$labels)
-    # Reorder the partitions to match the order in barcode_sta_df
-    all_partitions_reordered <- all_partitions[clone_id_map, ]
+    all_partitions_reordered <- all_partitions_genes[clone_id_map, ]
     
-    # Create a mapping from each cell's barcode ID to its row index in barcode_sta_df
     cell_to_clone_map <- match(barcode_used, barcode_sta_df$BarcodeID)
     
     if (is.null(n_cores)) {
@@ -444,16 +434,11 @@ analyze_gene_fluctuation <- function(seurat_obj, n_cores = NULL) {
     doParallel::registerDoParallel(cl)
 
     message("  - Calculating SSw across hierarchy levels (lightweight parallel loop)...")
-    # --- [OPTIMIZATION 3]: The loop is now much lighter ---
     SSw_results_list <- foreach::foreach(
         j = 2:(lineage_total - 1),
         .packages = "Matrix"
     ) %dopar% {
-        # Directly use the pre-calculated partition for `j` clusters
-        # Note: The column index for k=j clusters is j-1 in `all_partitions_reordered`
         clone_clusters_j <- all_partitions_reordered[, j-1]
-        
-        # Map clone clusters to each cell
         barcode_cluster_j <- clone_clusters_j[cell_to_clone_map]
 
         valid_clusters <- sort(unique(barcode_cluster_j))
@@ -461,7 +446,6 @@ analyze_gene_fluctuation <- function(seurat_obj, n_cores = NULL) {
             Matrix::rowMeans(sc_expression_ANOVA[, barcode_cluster_j == k, drop = FALSE])
         }, numeric(n_genes_anova))
         
-        # Map the means back to each cell
         cluster_map <- match(barcode_cluster_j, valid_clusters)
         mean_expr_mapped <- cluster_means[, cluster_map]
         
@@ -469,7 +453,6 @@ analyze_gene_fluctuation <- function(seurat_obj, n_cores = NULL) {
     }
     parallel::stopCluster(cl)
 
-    # --- The rest of the function remains the same ---
     SSw_matrix <- do.call(cbind, SSw_results_list)
 
     SSt_anova <- heritable_genes_df[high_F_gene_names, "SSt"]
