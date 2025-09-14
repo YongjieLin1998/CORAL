@@ -5,7 +5,7 @@ CORAL (Clone Oriented Reconstruction of Attractors in the Landscape) is a projec
 
 ## CORAL-base
 
-**CORAL-base** is the original R version of CORAL, designed for one-timepoint lineage tracing dataset analysis. By integrating lineage information, it provides an alternative way to define the boundary of a truly 'heritable' cell state, rather than a 'cluster'. The resulting 'CORAL'-like cell state tree enables a systematic analysis of 'memory genes' participating in many biological processes.
+**CORAL-base** is the current R version of CORAL, designed for one-timepoint lineage tracing dataset analysis. By integrating lineage information, it provides an alternative way to define the boundary of a truly 'heritable' cell state, rather than a 'cluster'. The resulting 'CORAL'-like cell state tree enables a systematic analysis of 'memory genes' participating in many biological processes.
 
 ### Installation
 
