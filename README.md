@@ -15,7 +15,7 @@ You can install the development version of CORAL-base from GitHub with:
 if (!requireNamespace("devtools", quietly = TRUE)) {
     install.packages("devtools")
 }
-devtools::install_github("your-github-username/CORAL")
+devtools::install_github("YongjieLin1998/CORAL")
 ```
 
 ### Workflow Example
@@ -29,6 +29,9 @@ This tutorial assumes you have already loaded your single-cell data into a `Seur
 * Normalized expression data (e.g., processed via `Seurat::NormalizeData()`).
 * A metadata column (e.g., `true_clone_id`) that contains the unique lineage barcode or clone identifier for each cell.
 
+* Here we used a published lineage tracing dataset of melanoma cells from [Harmange et.al.2023](https://www.nature.com/articles/s41467-023-41811-8#data-availability)as an example. The dataset is publically available under Gene Expression Omnibus accession number [GSE237228](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE237228).
+* We downsampled 500 cells from the dataset as a demonstration. 
+
 First, load the necessary libraries.
 
 ```r
@@ -41,7 +44,7 @@ library(ggpubr)
 
 # This guide assumes `seurat_obj` is already in your environment.
 # Let's inspect its metadata to confirm the required columns are present.
-# The output should show columns like 'true_clone_id' and 'cell_type'.
+# The output should show columns like 'true_clone_id'. 
 head(seurat_obj@meta.data)
 ```
 
