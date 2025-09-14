@@ -151,6 +151,23 @@ bigSparseDist_pairwise <- function(x, y) {
 #'
 #' @return An updated Seurat object with the analysis results stored in `@misc$CORAL_ground_truth_analysis`.
 #' @export
+#' @title Run the Complete (Optimized) CORAL-base Ground Truth Analysis (v4 - Robust)
+#' @description This is the complete, robustly fixed version of the main CORAL analysis function.
+#' It includes a sanity check for metadata/matrix cell consistency and safeguards against
+#' data dimension reduction errors for single-cell clones.
+#'
+#' @param seurat_obj A Seurat object containing true clone IDs in its metadata.
+#' @param true_barcode_col A string specifying the column name in the metadata that contains the true lineage barcode IDs.
+#' @param clone_size_cutoff An integer. Clones smaller than this size will be excluded from the analysis. Defaults to `2`.
+#' @param num_states An integer. The number of CORAL states (i.e., clone clusters) to create. Defaults to `6`.
+#' @param hclust_method A string specifying the hierarchical clustering method to use. Defaults to `"ward.D"`. See `?hclust` for more options.
+#' @param min_gene_mean A numeric value used to filter out lowly expressed genes in the heritable gene analysis. Defaults to `0.05`.
+#' @param permutation_repeats An integer specifying the number of repeats for the permutation test. Defaults to `5`.
+#' @param n_cores An integer specifying the number of cores to use for parallel processing. Defaults to `parallel::detectCores() - 1`.
+#' @param down_sample A numeric value between 0 and 1 for downsampling clones. Defaults to `1` (no downsampling).
+#'
+#' @return An updated Seurat object with the analysis results stored in `@misc$CORAL_ground_truth_analysis`.
+#' @export
 run_coral_ground_truth_analysis <- function(
     seurat_obj,
     true_barcode_col,
