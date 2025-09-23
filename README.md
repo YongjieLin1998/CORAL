@@ -63,7 +63,7 @@ The `run_coral_ground_truth_analysis()` function is the core of the workflow. It
 seurat_obj <- run_coral_ground_truth_analysis(
   seurat_obj = seurat_obj,
   true_barcode_col = "true_clone_id", # Specify the clone ID column
-  num_states = 6,                      # Group clones into 4 states
+  num_states = 6,                      # Group clones into 6 states
   permutation_repeats = 100,           # Recommended repeats for robust results
   n_cores = 4                          # Number of cores for parallel processing
 )
@@ -78,7 +78,7 @@ A key part of the analysis is exploring the ideal number of states to describe y
 
 ```r
 # Let's say we want to explore what 4 states look like instead of 6
-message("Re-running analysis with 6 states...")
+message("Re-running analysis with 4 states...")
 seurat_obj <- run_coral_ground_truth_analysis(
   seurat_obj = seurat_obj,
   true_barcode_col = "true_clone_id",
