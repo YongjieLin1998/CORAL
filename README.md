@@ -5,7 +5,7 @@ CORAL (Clone Oriented Reconstruction of Attractors in the Landscape) is a projec
 
 ## Development and Feedback
 
-We are working to improve CORAL and add new functions. Thus, your feedback and suggestions are very welcome. If you need a new specific function and find something not working, just let us know and we'll fix it. 
+We are working to improve CORAL and add new functions. Thus, your feedback and suggestions are very welcome. If you need a new specific function or find something not working, just let us know and we'll fix it. 
 
 Contact: Yongjie Lin (linyjie@pku.edu.cn)
 
