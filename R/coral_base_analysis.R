@@ -969,15 +969,23 @@ plot_gene_dashboard <- function(seurat_obj,
 
 #' @title Plot Gene Fluctuation Mode
 #' @description Creates a scatter plot visualizing the gene fluctuation mode.
-#' This version includes a reference line for the significance threshold (y-axis).
+#' This version includes a reference line for the significance threshold (y-axis)
+#' and allows selecting genes based on this threshold or by the top N.
 #'
 #' @param seurat_obj A Seurat object that has been run through `analyze_gene_fluctuation`.
-#' @param n_genes_to_show An integer. Number of top genes to display.
+#' @param selection_method A string specifying how to select genes for plotting.
+#' Can be `"threshold"` (default) to show all genes above the significance threshold,
+#' or `"top_n"` to show a specific number of top genes based on Omega-squared.
+#' @param n_genes_to_show An integer. Used only when `selection_method` is `"top_n"`.
+#' Specifies the number of top genes to display. Defaults to 1000.
 #' @param genes_to_highlight A character vector of specific gene names to label.
 #'
 #' @return A ggplot object.
 #' @export
-plot_gene_fluctuation_mode <- function(seurat_obj, n_genes_to_show = 1000, genes_to_highlight = NULL) {
+plot_gene_fluctuation_mode <- function(seurat_obj,
+                                       selection_method = "threshold", # <-- New parameter, set to default
+                                       n_genes_to_show = 1000,
+                                       genes_to_highlight = NULL) {
     if (is.null(seurat_obj@misc$CORAL_ground_truth_analysis$heritable_genes_df$omega_area)) {
         stop("Please run 'analyze_gene_fluctuation' first.")
     }
@@ -985,22 +993,34 @@ plot_gene_fluctuation_mode <- function(seurat_obj, n_genes_to_show = 1000, genes
     results <- seurat_obj@misc$CORAL_ground_truth_analysis
     plot_df <- results$heritable_genes_df
     plot_df <- plot_df[!is.na(plot_df$omega_area), ]
-    plot_df <- plot_df[order(-plot_df$Omega_square), ]
     
-    n_genes_to_show <- min(n_genes_to_show, nrow(plot_df))
-    plot_df_subset <- plot_df[1:n_genes_to_show, ]
-    
-    label_df <- plot_df[plot_df$name %in% genes_to_highlight, ]
-
     threshold <- results$heritable_genes_threshold
 
+    # --- [MODIFICATION START] ---
+    # Select filtering logic based on the selection_method parameter
+    if (selection_method == "threshold") {
+        # New logic: filter genes where Omega_square > threshold
+        plot_df_subset <- subset(plot_df, Omega_square > threshold)
+        
+        if(nrow(plot_df_subset) == 0) {
+            message("No genes found above the heritability threshold. The plot will be empty.")
+        }
+        
+    } else if (selection_method == "top_n") {
+        # Original logic: sort by Omega_square and select top n_genes_to_show
+        plot_df <- plot_df[order(-plot_df$Omega_square), ]
+        n_to_show <- min(n_genes_to_show, nrow(plot_df))
+        plot_df_subset <- plot_df[1:n_to_show, ]
+        
+    } else {
+        stop("Invalid 'selection_method'. Please choose 'threshold' or 'top_n'.")
+    }
+    # --- [MODIFICATION END] ---
+    
+    label_df <- plot_df_subset[plot_df_subset$name %in% genes_to_highlight, ]
+
     p <- ggplot(plot_df_subset, aes(x = .data$omega_area, y = .data$Omega_square)) +
-        # Only the horizontal line for the heritability threshold remains
         geom_hline(yintercept = threshold, linetype = "dashed", color = "red", size = 0.8) +
-        
-        # The geom_vline for the global reference has been removed
-        
-        # Scatter plot layers
         geom_point(color = "grey30", size = 2, alpha = 0.8) +
         geom_point(data = label_df, color = "salmon", size = 3) +
         ggrepel::geom_label_repel(data = label_df, aes(label = .data$name),
@@ -1009,8 +1029,7 @@ plot_gene_fluctuation_mode <- function(seurat_obj, n_genes_to_show = 1000, genes
         labs(x = "Normalized AUC Shape (omega_area)",
              y = "Lineage Effect Size (Omega-squared)",
              title = "Gene Fluctuation Mode",
-             subtitle = "Red dashed line indicates heritability threshold") # Updated subtitle
+             subtitle = paste("Showing genes with Omega-squared > threshold (", round(threshold, 3), ")", sep=""))
     
     return(p)
 }
-
