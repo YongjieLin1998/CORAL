@@ -118,7 +118,7 @@ print(p_mds_by_state)
 This heatmap displays the transcriptional similarity between all clones. The clustering reveals clone groupings, which are now partitioned into 6 CORAL states.
 
 ```r
-# Visualize the clone-clone energy distance matrix with 6 states
+# Visualize the clone-clone energy distance matrix with 6 states  
 ht <- visualize_clone_distance_heatmap(seurat_obj)
 ComplexHeatmap::draw(ht)
 ```
