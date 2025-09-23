@@ -1033,3 +1033,57 @@ plot_gene_fluctuation_mode <- function(seurat_obj,
     
     return(p)
 }
+
+#' @title Visualize CORAL States on UMAP with Split Views and Consistent Colors
+#' @description Creates a UMAP plot where each CORAL state is shown in a separate 
+#' panel. The function internally generates a color palette that is consistent 
+#' with the `visualize_clone_mds` function, ensuring a one-to-one color match.
+#'
+#' @param seurat_obj A Seurat object that has been processed by 
+#' `run_coral_ground_truth_analysis` and `RunUMAP`.
+#' @param ... Additional parameters to be passed directly to `Seurat::DimPlot` 
+#' (e.g., `ncol = 3`, `pt.size = 0.5`).
+#'
+#' @return A ggplot object.
+#'
+#' @export
+#' @examples
+#' \dontrun{
+#' # Assuming seurat_obj has been processed and contains UMAP data
+#' split_plot <- visualize_coral_states_split_umap(seurat_obj, ncol = 3)
+#' print(split_plot)
+#' }
+visualize_coral_states_split_umap <- function(seurat_obj, ...) {
+  
+  # --- Input Validation ---
+  if (!"coral_ground_truth_state" %in% colnames(seurat_obj@meta.data)) {
+    stop("Metadata column 'coral_ground_truth_state' not found. Please run 'run_coral_ground_truth_analysis' first.")
+  }
+  if (!"umap" %in% names(seurat_obj@reductions)) {
+    warning("UMAP reduction not found. Please run RunUMAP() on the Seurat object first.")
+    return(NULL)
+  }
+
+  # --- Generate the plot ---
+  p <- Seurat::DimPlot(
+    seurat_obj,
+    group.by = "coral_ground_truth_state",
+    split.by = "coral_ground_truth_state",
+    cols = {
+      # This block generates the color map internally to ensure consistency
+      states <- sort(unique(seurat_obj@meta.data$coral_ground_truth_state))
+      states <- states[states != 0] # Exclude unassigned group
+      
+      # Recreate the exact color logic from visualize_clone_mds
+      colorRampPalette(RColorBrewer::brewer.pal(8, "Set2"))(length(states)) |>
+        stats::setNames(states)
+    },
+    ... # Pass any additional arguments (like ncol, pt.size) to DimPlot
+  )
+  
+  # --- Final Touches ---
+  p <- p + 
+    Seurat::NoLegend() +
+    ggplot2::ggtitle("CORAL States on UMAP")
+  return(p)
+}
