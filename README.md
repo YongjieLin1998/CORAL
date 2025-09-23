@@ -30,7 +30,6 @@ This tutorial assumes you have already loaded your single-cell data into a `Seur
 * A metadata column (e.g., `true_clone_id`) that contains the unique lineage barcode or clone identifier for each cell.
 
 * Here we used a published lineage tracing dataset of melanoma cells from [Harmange et.al.2023](https://www.nature.com/articles/s41467-023-41811-8#data-availability)as an example. The dataset is publically available under Gene Expression Omnibus accession number [GSE237228](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE237228).
-* We downsampled 500 cells from the dataset as a demonstration. 
 
 First, load the necessary libraries.
 
@@ -53,38 +52,38 @@ head(seurat_obj@meta.data)
 The `run_coral_ground_truth_analysis()` function is the core of the workflow. It calculates clone distances, defines CORAL states, and identifies heritable genes. All results are conveniently stored within the Seurat object.
 
 ```r
-# Run the main CORAL analysis pipeline with 4 states
+# Run the main CORAL analysis pipeline with 6 states
 seurat_obj <- run_coral_ground_truth_analysis(
   seurat_obj = seurat_obj,
   true_barcode_col = "true_clone_id", # Specify the clone ID column
-  num_states = 4,                      # Group clones into 4 states
+  num_states = 6,                      # Group clones into 4 states
   permutation_repeats = 100,           # Recommended repeats for robust results
   n_cores = 4                          # Number of cores for parallel processing
 )
 
 # The results are stored in the 'misc' slot of the Seurat object
-results_4_states <- seurat_obj@misc$CORAL_ground_truth_analysis
+results_6_states <- seurat_obj@misc$CORAL_ground_truth_analysis
 ```
 
-#### 3. Iterating and Modifying the Number of States
+#### 3. Iterating and Modifying the Number of States (optional)
 
 A key part of the analysis is exploring the ideal number of states to describe your clonal hierarchy. You can easily test a different number of states by re-running the main analysis function with a new value for `num_states`. This will overwrite the previous results.
 
 ```r
-# Let's say we want to explore what 6 states look like instead of 4
+# Let's say we want to explore what 4 states look like instead of 6
 message("Re-running analysis with 6 states...")
 seurat_obj <- run_coral_ground_truth_analysis(
   seurat_obj = seurat_obj,
   true_barcode_col = "true_clone_id",
-  num_states = 6, # <-- Changed value
+  num_states = 4, # <-- Changed value
   permutation_repeats = 100,
   n_cores = 4
 )
 
-# Now, all downstream visualizations will use the new 6-state grouping.
+# Now, all downstream visualizations will use the new 4-state grouping.
 # For example, let's regenerate the MDS plot with updated states:
-p_mds_6_states <- visualize_clone_mds(seurat_obj, color_by = "coral_state")
-print(p_mds_6_states)
+p_mds_4_states <- visualize_clone_mds(seurat_obj, color_by = "coral_state")
+print(p_mds_4_states)
 ```
 
 #### 4. Run Advanced Gene Fluctuation Analysis
@@ -102,7 +101,7 @@ head(seurat_obj@misc$CORAL_ground_truth_analysis$heritable_genes_df)
 
 #### 5. Visualize the Final Results
 
-CORAL-base provides a suite of plotting functions to explore the final analysis output.
+CORAL-base provides a suite of plotting functions to explore the final analysis output. Meanwhile, you can simply use Seurat-based visualization functions to highlight the CORAL states in traditional embedding methods like UMAP. 
 
 ##### Visualizing CORAL States on the MDS Plot
 A core visualization is to view the relationships between clones in a 2D space using MDS. The `visualize_clone_mds` function can then color each clone by its assigned CORAL state, revealing the structure of the clonal hierarchy.
@@ -114,14 +113,19 @@ p_mds_by_state <- visualize_clone_mds(seurat_obj)
 print(p_mds_by_state)
 ```
 
+![MDS Plot of clones](./vignettes/1.png)
+
+
 ##### Clone Energy Distance Heatmap
-This heatmap displays the transcriptional similarity between all clones. The clustering reveals clone groupings, which are now partitioned into 6 CORAL states.
+This heatmap displays the transcriptional similarity between all clones. The clustering reveals clone groupings, which are now partitioned into 4 CORAL states.
 
 ```r
-# Visualize the clone-clone energy distance matrix with 6 states  
+# Visualize the clone-clone energy distance matrix with 4 states  
 ht <- visualize_clone_distance_heatmap(seurat_obj)
 ComplexHeatmap::draw(ht)
 ```
+![Energy Distance Heatmap](./vignettes/2.png)
+
 
 ##### Confusion Matrix: CORAL States vs. Metadata
 This heatmap shows the correspondence between our 6 lineage-defined CORAL states and any other pre-existing cell annotation, such as cell type.
@@ -135,6 +139,8 @@ p_confusion <- plot_state_celltype_confusion(
 )
 ComplexHeatmap::draw(p_confusion)
 ```
+![confusion matrix](./vignettes/3.png)
+
 
 ##### Heritable Gene Distribution
 This plot is a key diagnostic tool that compares the observed distribution of Omega-squared values (heritability effect size) against the null distribution from permutations.
@@ -144,6 +150,7 @@ This plot is a key diagnostic tool that compares the observed distribution of Om
 p_dist <- plot_heritable_gene_distribution(seurat_obj)
 print(p_dist)
 ```
+![Heritable gene distribution](./vignettes/4.png)
 
 ##### Gene Fluctuation Mode Plot
 This plot visualizes the relationship between a gene's heritability effect size (Omega-squared) and its fluctuation pattern (`omega_area`), revealing genes with distinct modes of inheritance.
@@ -156,6 +163,8 @@ p_fluctuation <- plot_gene_fluctuation_mode(
 )
 print(p_fluctuation)
 ```
+![Heritable gene distribution](./vignettes/5.png)
+
 
 #### Visualizing Gene Expression on the MDS Plot
 This function colors the MDS clone projection by the pseudobulk expression of a specific gene, providing an intuitive view of a gene's expression across different CORAL states.
@@ -172,6 +181,8 @@ p_gene_mds <- visualize_gene_mds(
 )
 print(p_gene_mds)
 ```
+![Heritable gene distribution](./vignettes/6.png)
+
 
 #### Plotting a Gene's Omega-squared Fluctuation Curve
 This function plots how a specific gene's Omega-squared value changes as the clone clustering hierarchy is traversed, revealing the gene's heritability structure.
@@ -181,6 +192,8 @@ This function plots how a specific gene's Omega-squared value changes as the clo
 p_omega_curve <- plot_gene_omega_curve(seurat_obj, gene = top_gene)
 print(p_omega_curve)
 ```
+![Heritable gene distribution](./vignettes/7.png)
+
 
 #### Creating a Comprehensive Gene Dashboard
 This powerful function combines multiple key visualizations for a single gene (fluctuation curve, UMAP feature plot, MDS expression plot, and ridge plot) into a single dashboard, offering a holistic view of its heritability and expression patterns.
@@ -192,6 +205,7 @@ p_dashboard <- plot_gene_dashboard(
 )
 print(p_dashboard)
 ```
+![Heritable gene distribution](./vignettes/8.png)
 
 
 ---
