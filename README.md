@@ -3,6 +3,13 @@
 CORAL (Clone Oriented Reconstruction of Attractors in the Landscape) is a project for heritable cell state identification and gene expression dynamics inference, mainly based on the lineage tracing strategy.
 
 
+## Development and Feedback
+
+We are working to improve CORAL and add new functions. Thus, your feedback and suggestions are very welcome. If you need a new specific function and find something not working, just let us know and we'll fix it. 
+
+Contact: Yongjie Lin (linyjie@pku.edu.cn)
+
+
 ## CORAL-base
 
 **CORAL-base** is the current R version of CORAL, designed for one-timepoint lineage tracing dataset analysis. By integrating lineage information, it provides an alternative way to define the boundary of a truly 'heritable' cell state, rather than a 'cluster'. The resulting 'CORAL'-like cell state tree enables a systematic analysis of 'memory genes' participating in many biological processes.
