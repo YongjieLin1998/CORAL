@@ -103,7 +103,7 @@ head(seurat_obj@misc$CORAL_ground_truth_analysis$heritable_genes_df)
 
 CORAL-base provides a suite of plotting functions to explore the final analysis output. Meanwhile, you can simply use Seurat-based visualization functions to highlight the CORAL states in traditional embedding methods like UMAP. 
 
-##### Visualizing CORAL States on the MDS Plot
+##### Visualizing CORAL States on the MDS clone Plot and UMAP cell Plot
 A core visualization is to view the relationships between clones in a 2D space using MDS. The `visualize_clone_mds` function can then color each clone by its assigned CORAL state, revealing the structure of the clonal hierarchy.
 
 ```r
@@ -114,6 +114,14 @@ print(p_mds_by_state)
 ```
 
 ![MDS Plot of clones](./vignettes/1.png)
+
+The `visualize_coral_states_split_umap` function can then color each clone by its assigned CORAL state in the original UMAP visualization in Seurat object. It shows that the cell states divided by CORAL can be highly overlapped in traditional embedding methods.
+
+```r
+# Visualize the UMAP embedding of clones, colored by their assigned CORAL state.
+my_split_umap <- visualize_coral_states_split_umap(seurat_obj, ncol = 2, pt.size = 0.8)
+```
+![UMAP Plot of clones](./vignettes/9.png)
 
 
 ##### Clone Energy Distance Heatmap
