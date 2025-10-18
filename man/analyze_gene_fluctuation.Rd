@@ -2,10 +2,8 @@
 % Please edit documentation in R/coral_base_analysis.R
 \name{analyze_gene_fluctuation}
 \alias{analyze_gene_fluctuation}
-\title{Analyze Gene Fluctuation Mode (V4, Highly Optimized & Corrected)}
+\title{Analyze Gene Fluctuation Mode (Highly Optimized)}
 \usage{
-analyze_gene_fluctuation(seurat_obj, n_cores = NULL)
-
 analyze_gene_fluctuation(seurat_obj, n_cores = NULL)
 }
 \arguments{
@@ -15,18 +13,9 @@ analyze_gene_fluctuation(seurat_obj, n_cores = NULL)
 }
 \value{
 An updated Seurat object with fluctuation analysis results.
-
-An updated Seurat object with fluctuation analysis results, including
-the new `global_omega_area` value in the `misc` slot.
 }
 \description{
-This version is highly optimized to avoid redundant computations.
-It performs hierarchical clustering only once, then uses cutree() to
-get all cluster assignments, leading to a massive speed improvement.
-
-This version is highly optimized and calculates both the gene-specific
-fluctuation area (`omega_area`) and the 'global_omega_area' based on the overall
-clone distance hierarchy, replicating the logic from the original manuscript's script.
-It performs hierarchical clustering only once, then uses cutree() to get all
-cluster assignments, leading to a massive speed improvement.
+This optimized version performs hierarchical clustering only once,
+then uses cutree() to efficiently get all cluster assignments for calculating
+gene-specific fluctuation metrics (`omega_area`).
 }

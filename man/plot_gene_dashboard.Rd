@@ -2,7 +2,7 @@
 % Please edit documentation in R/coral_base_analysis.R
 \name{plot_gene_dashboard}
 \alias{plot_gene_dashboard}
-\title{Create a Comprehensive Gene Analysis Dashboard}
+\title{Create a Comprehensive Gene Analysis Dashboard (Corrected with Patchwork)}
 \usage{
 plot_gene_dashboard(seurat_obj, gene, num_ridge_idents = 12)
 }
@@ -15,10 +15,9 @@ plot_gene_dashboard(seurat_obj, gene, num_ridge_idents = 12)
 ridge plot. Defaults to 12.}
 }
 \value{
-A plot object created by `ggpubr::ggarrange`.
+A 'patchwork' plot object.
 }
 \description{
 Combines multiple plots for a single gene into one comprehensive view.
-It now includes an AUC value annotation on the fluctuation curve plot.
-The required pseudobulk matrix is calculated internally.
+This version uses the 'patchwork' package for robust plot assembly.
 }

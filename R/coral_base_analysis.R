@@ -924,96 +924,7 @@ plot_gene_omega_curve <- function(seurat_obj, gene) {
   return(p)
 }
 
-#' @title Create a Comprehensive Gene Analysis Dashboard (Corrected)
-#' @description Combines multiple plots for a single gene into one comprehensive view.
-#' This corrected version ensures the ridge plot displays the largest clones based on
-#' their actual cell count in the analysis, not by clone ID order.
-#'
-#' @param seurat_obj A Seurat object processed by the CORAL analysis.
-#' @param gene A string specifying the name of the gene to analyze.
-#' @param num_ridge_idents An integer for the number of top clones to show in the
-#' ridge plot. Defaults to 12.
-#'
-#' @return A plot object created by `ggpubr::ggarrange`.
-#' @export
-plot_gene_dashboard <- function(seurat_obj,
-                                gene,
-                                num_ridge_idents = 12) {
 
-  results <- seurat_obj@misc$CORAL_ground_truth_analysis
-  
-  # --- (Internal logic for pseudobulk matrix remains the same) ---
-  sc_expression_subset <- results$internal_data$sc_expression_subset
-  barcode_used <- results$internal_data$barcode_used
-  temp_seurat_for_agg <- CreateSeuratObject(counts = sc_expression_subset)
-  temp_seurat_for_agg <- AddMetaData(temp_seurat_for_agg, metadata = as.character(barcode_used), col.name = "clone_id")
-  Idents(temp_seurat_for_agg) <- "clone_id"
-  pseudobulk_matrix <- AggregateExpression(temp_seurat_for_agg, assays = "RNA", slot = "counts", return.seurat = FALSE)$RNA
-  colnames(pseudobulk_matrix) <- gsub("^g", "", colnames(pseudobulk_matrix))
-  # --- (End of internal logic) ---
-
-  # 1. Generate Omega Curve Plot (remains the same)
-  p_omega <- plot_gene_omega_curve(seurat_obj, gene) +
-    theme(legend.position = "none")
-  
-  heritable_genes_df <- results$heritable_genes_df
-  if (gene %in% heritable_genes_df$name) {
-    gene_info <- heritable_genes_df[heritable_genes_df$name == gene, ]
-    auc_value <- gene_info$omega_area
-    if (length(auc_value) == 1 && !is.na(auc_value)) {
-      auc_text <- sprintf("AUC: %.3f", auc_value)
-      p_omega <- p_omega +
-        ggplot2::annotate("text", x = Inf, y = -Inf, label = auc_text,
-                          hjust = 1.1, vjust = -0.5, size = 4.5, color = "black",
-                          fontface = "bold")
-    }
-  }
-
-  # 2. Generate UMAP Feature Plot (remains the same)
-  p_umap <- FeaturePlot(seurat_obj, features = gene, pt.size = 1, order = TRUE) +
-    NoAxes() +
-    ggtitle(NULL)
-
-  # 3. Generate MDS Expression Plot (remains the same)
-  p_mds <- visualize_gene_mds(seurat_obj, gene = gene) +
-    ggtitle(NULL)
-
-  # --- [FIX START] ---
-  # 4. Generate Ridge Plot for LARGEST clones (Corrected Logic)
-  
-  # Get the clone statistics data frame
-  clone_stats <- results$clone_statistics
-  
-  # EXPLICITLY SORT the clones by their true size (TrueFreq) in descending order
-  sorted_clone_stats <- clone_stats[order(clone_stats$TrueFreq, decreasing = TRUE), ]
-  
-  # Select the BarcodeIDs of the top N largest clones
-  top_clones <- head(sorted_clone_stats$BarcodeID, num_ridge_idents)
-  # --- [FIX END] ---
-  
-  Idents(seurat_obj) <- "coral_barcode_numeric"
-  # The 'sort' argument here sorts the plot panels, not the clone selection.
-  p_ridge <- RidgePlot(seurat_obj, features = gene, idents = as.character(top_clones),
-                       sort = "decreasing") +
-    NoLegend() +
-    ggtitle("Expression in Top Largest Clones") + # Updated title for clarity
-    theme(axis.title.y = element_blank())
-
-  # Arrange all plots into a dashboard (remains the same)
-  dashboard <- ggpubr::ggarrange(
-    p_omega, p_umap, p_mds, p_ridge,
-    ncol = 2, nrow = 2
-  )
-
-  # Add a main title (remains the same)
-  final_plot <- ggpubr::annotate_figure(
-    dashboard,
-    top = ggpubr::text_grob(paste("Comprehensive Analysis of Gene:", gene),
-                          face = "bold", size = 16)
-  )
-
-  return(final_plot)
-}
 
 #' @title Plot Gene Fluctuation Mode
 #' @description Creates a scatter plot visualizing the gene fluctuation mode.
@@ -1134,4 +1045,101 @@ visualize_coral_states_split_umap <- function(seurat_obj, ...) {
     Seurat::NoLegend() +
     ggplot2::ggtitle("CORAL States on UMAP")
   return(p)
+}
+
+#' @title Create a Comprehensive Gene Analysis Dashboard (Using S4 Hack)
+#' @description Combines multiple plots for a single gene into one comprehensive view.
+#' This version uses the 'patchwork' package for robust plot assembly and
+#' includes a '+ theme()' hack to attempt to stabilize Seurat v5 plot objects
+#' and avoid 'S4SXP' errors.
+#'
+#' @param seurat_obj A Seurat object processed by the CORAL analysis.
+#' @param gene A string specifying the name of the gene to analyze.
+#' @param num_ridge_idents An integer for the number of top clones to show in the
+#' ridge plot. Defaults to 12.
+#'
+#' @return A 'patchwork' plot object.
+#' @export
+#' @import patchwork
+#' @import ggplot2
+
+plot_gene_dashboard <- function(seurat_obj,
+                                gene,
+                                num_ridge_idents = 12) {
+
+  results <- seurat_obj@misc$CORAL_ground_truth_analysis
+  
+  # --- (Internal logic for pseudobulk matrix remains the same) ---
+  sc_expression_subset <- results$internal_data$sc_expression_subset
+  barcode_used <- results$internal_data$barcode_used
+  temp_seurat_for_agg <- CreateSeuratObject(counts = sc_expression_subset)
+  temp_seurat_for_agg <- AddMetaData(temp_seurat_for_agg, metadata = as.character(barcode_used), col.name = "clone_id")
+  Idents(temp_seurat_for_agg) <- "clone_id"
+  pseudobulk_matrix <- AggregateExpression(temp_seurat_for_agg, assays = "RNA", slot = "counts", return.seurat = FALSE)$RNA
+  colnames(pseudobulk_matrix) <- gsub("^g", "", colnames(pseudobulk_matrix))
+  # --- (End of internal logic) ---
+
+  # 1. Generate Omega Curve Plot (remains the same)
+  p_omega <- plot_gene_omega_curve(seurat_obj, gene) +
+    theme(legend.position = "none")
+  
+  heritable_genes_df <- results$heritable_genes_df
+  if (gene %in% heritable_genes_df$name) {
+    gene_info <- heritable_genes_df[heritable_genes_df$name == gene, ]
+    auc_value <- gene_info$omega_area
+    if (length(auc_value) == 1 && !is.na(auc_value)) {
+      auc_text <- sprintf("AUC: %.3f", auc_value)
+      p_omega <- p_omega +
+        ggplot2::annotate("text", x = Inf, y = -Inf, label = auc_text,
+                          hjust = 1.1, vjust = -0.5, size = 4.5, color = "black",
+                          fontface = "bold")
+    }
+  }
+
+  # 2. Generate UMAP Feature Plot (with HACK)
+  p_umap <- FeaturePlot(seurat_obj, features = gene, pt.size = 1, order = TRUE) +
+    NoAxes() +
+    ggtitle(NULL) +
+    ggplot2::theme()  # <-- [HACK APPLIED]
+
+  # 3. Generate MDS Expression Plot (remains the same)
+  p_mds <- visualize_gene_mds(seurat_obj, gene = gene) +
+    ggtitle(NULL)
+
+  # --- [FIX START] ---
+  # 4. Generate Ridge Plot for LARGEST clones (Corrected Logic)
+  
+  # Get the clone statistics data frame
+  clone_stats <- results$clone_statistics
+  
+  # EXPLICITLY SORT the clones by their true size (TrueFreq) in descending order
+  sorted_clone_stats <- clone_stats[order(clone_stats$TrueFreq, decreasing = TRUE), ]
+  
+  # Select the BarcodeIDs of the top N largest clones
+  top_clones <- head(sorted_clone_stats$BarcodeID, num_ridge_idents)
+  # --- [FIX END] ---
+  
+  Idents(seurat_obj) <- "coral_barcode_numeric"
+  
+  # Generate Ridge Plot (with HACK)
+  p_ridge <- RidgePlot(seurat_obj, features = gene, idents = as.character(top_clones),
+                       sort = "decreasing") +
+    NoLegend() +
+    ggtitle("Expression in Top Largest Clones") +
+    theme(axis.title.y = element_blank()) +
+    ggplot2::theme() # <-- [HACK APPLIED]
+
+  # --- [PATCHWORK ASSEMBLY] ---
+  # Use (plot1 + plot2) / (plot3 + plot4) syntax to create a 2x2 grid
+  dashboard <- (p_omega + p_umap) / (p_mds + p_ridge)
+
+  # Use plot_annotation() to add the main title
+  final_plot <- dashboard + 
+    patchwork::plot_annotation(
+      title = paste("Comprehensive Analysis of Gene:", gene),
+      theme = theme(plot.title = element_text(face = "bold", size = 16, hjust = 0.5))
+    )
+  # --- [END OF ASSEMBLY] ---
+
+  return(final_plot)
 }

@@ -41,6 +41,8 @@ An updated Seurat object with the analysis results stored in `@misc$CORAL_ground
 An updated Seurat object with the analysis results stored in `@misc$CORAL_ground_truth_analysis`.
 
 An updated Seurat object with the analysis results stored in `@misc$CORAL_ground_truth_analysis`.
+
+An updated Seurat object with the analysis results stored in `@misc$CORAL_ground_truth_analysis`.
 }
 \description{
 This is the main wrapper function for the `coral.base` analysis module.
@@ -48,6 +50,10 @@ This is the main wrapper function for the `coral.base` analysis module.
   making it scalable to large datasets. It analyzes the structure of known lineage
   tracing clones, defines CORAL states, and identifies "heritable genes". All
   results are stored in the Seurat object's misc slot under `CORAL_ground_truth_analysis`.
+
+This is the complete, robustly fixed version of the main CORAL analysis function.
+It includes a sanity check for metadata/matrix cell consistency and safeguards against
+data dimension reduction errors for single-cell clones.
 
 This is the complete, robustly fixed version of the main CORAL analysis function.
 It includes a sanity check for metadata/matrix cell consistency and safeguards against
