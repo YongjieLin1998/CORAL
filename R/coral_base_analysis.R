@@ -1047,11 +1047,13 @@ visualize_coral_states_split_umap <- function(seurat_obj, ...) {
   return(p)
 }
 
-#' @title Create a Comprehensive Gene Analysis Dashboard (Using S4 Hack)
-#' @description Combines multiple plots for a single gene into one comprehensive view.
-#' This version uses the 'patchwork' package for robust plot assembly and
-#' includes a '+ theme()' hack to attempt to stabilize Seurat v5 plot objects
-#' and avoid 'S4SXP' errors.
+# 确保你安装了 ggridges
+# install.packages("ggridges")
+
+#' @title Create a Comprehensive Gene Analysis Dashboard (ggplot2 Bypass)
+#' @description This version completely avoids Seurat's FeaturePlot and RidgePlot
+#' functions to bypass the internal 'S4SXP' bug in Seurat v5. It plots the
+#' UMAP and density plots manually using pure ggplot2 and ggridges.
 #'
 #' @param seurat_obj A Seurat object processed by the CORAL analysis.
 #' @param gene A string specifying the name of the gene to analyze.
@@ -1062,6 +1064,7 @@ visualize_coral_states_split_umap <- function(seurat_obj, ...) {
 #' @export
 #' @import patchwork
 #' @import ggplot2
+#' @import ggridges  # We need this package for the ridge plot
 
 plot_gene_dashboard <- function(seurat_obj,
                                 gene,
@@ -1069,23 +1072,16 @@ plot_gene_dashboard <- function(seurat_obj,
 
   results <- seurat_obj@misc$CORAL_ground_truth_analysis
   
-  # --- (Internal logic for pseudobulk matrix remains the same) ---
-  sc_expression_subset <- results$internal_data$sc_expression_subset
-  barcode_used <- results$internal_data$barcode_used
-  temp_seurat_for_agg <- CreateSeuratObject(counts = sc_expression_subset)
-  temp_seurat_for_agg <- AddMetaData(temp_seurat_for_agg, metadata = as.character(barcode_used), col.name = "clone_id")
-  Idents(temp_seurat_for_agg) <- "clone_id"
-  pseudobulk_matrix <- AggregateExpression(temp_seurat_for_agg, assays = "RNA", slot = "counts", return.seurat = FALSE)$RNA
-  colnames(pseudobulk_matrix) <- gsub("^g", "", colnames(pseudobulk_matrix))
-  # --- (End of internal logic) ---
-
-  # 1. Generate Omega Curve Plot (remains the same)
-  p_omega <- plot_gene_omega_curve(seurat_obj, gene) +
-    theme(legend.position = "none")
+  # --- 1. Generate Omega Curve Plot (No change) ---
+  p_omega <- tryCatch({
+    plot_gene_omega_curve(seurat_obj, gene) +
+      theme(legend.position = "none")
+  }, error = function(e) {
+    ggplot() + theme_void() + ggtitle(paste("Omega curve failed for", gene))
+  })
   
-  heritable_genes_df <- results$heritable_genes_df
-  if (gene %in% heritable_genes_df$name) {
-    gene_info <- heritable_genes_df[heritable_genes_df$name == gene, ]
+  if (gene %in% results$heritable_genes_df$name) {
+    gene_info <- results$heritable_genes_df[results$heritable_genes_df$name == gene, ]
     auc_value <- gene_info$omega_area
     if (length(auc_value) == 1 && !is.na(auc_value)) {
       auc_text <- sprintf("AUC: %.3f", auc_value)
@@ -1096,50 +1092,85 @@ plot_gene_dashboard <- function(seurat_obj,
     }
   }
 
-  # 2. Generate UMAP Feature Plot (with HACK)
-  p_umap <- FeaturePlot(seurat_obj, features = gene, pt.size = 1, order = TRUE) +
-    NoAxes() +
-    ggtitle(NULL) +
-    ggplot2::theme()  # <-- [HACK APPLIED]
+  # --- 2. Generate UMAP Feature Plot (MANUAL GGPLOT2 BYPASS) ---
+  if (!"umap" %in% names(seurat_obj@reductions)) {
+     warning("UMAP reduction not found. Skipping UMAP plot.")
+     p_umap <- ggplot() + theme_void() + ggtitle("UMAP not found")
+  } else {
+    # Manually extract UMAP coordinates and gene data
+    umap_coords <- Seurat::Embeddings(seurat_obj, "umap")
+    gene_data <- Seurat::FetchData(seurat_obj, vars = gene, layer = "data") # Use layer for v5
+    
+    plot_df_umap <- data.frame(
+      UMAP_1 = umap_coords[, 1],
+      UMAP_2 = umap_coords[, 2],
+      Expression = gene_data[[1]]
+    )
+    
+    # Sort by expression to plot high-expressing cells on top
+    plot_df_umap <- plot_df_umap[order(plot_df_umap$Expression), ]
+    
+    p_umap <- ggplot(plot_df_umap, aes(x = UMAP_1, y = UMAP_2, color = Expression)) +
+      geom_point(size = 1) +
+      scale_color_gradient(low = "grey80", high = "red") +
+      theme_void() +
+      ggtitle(NULL) +
+      theme(legend.position = "none") 
+  }
 
-  # 3. Generate MDS Expression Plot (remains the same)
-  p_mds <- visualize_gene_mds(seurat_obj, gene = gene) +
-    ggtitle(NULL)
+  # --- 3. Generate MDS Expression Plot (No change) ---
+  p_mds <- tryCatch({
+    visualize_gene_mds(seurat_obj, gene = gene) +
+      ggtitle(NULL)
+  }, error = function(e) {
+    ggplot() + theme_void() + ggtitle(paste("MDS plot failed for", gene))
+  })
 
-  # --- [FIX START] ---
-  # 4. Generate Ridge Plot for LARGEST clones (Corrected Logic)
+
+  # --- 4. Generate Ridge Plot (MANUAL GGRIDGES BYPASS) ---
   
-  # Get the clone statistics data frame
+  # Find top N largest clones (No change)
   clone_stats <- results$clone_statistics
-  
-  # EXPLICITLY SORT the clones by their true size (TrueFreq) in descending order
   sorted_clone_stats <- clone_stats[order(clone_stats$TrueFreq, decreasing = TRUE), ]
-  
-  # Select the BarcodeIDs of the top N largest clones
   top_clones <- head(sorted_clone_stats$BarcodeID, num_ridge_idents)
-  # --- [FIX END] ---
   
-  Idents(seurat_obj) <- "coral_barcode_numeric"
+  # Extract data for these clones
+  plot_df_ridge <- Seurat::FetchData(
+    seurat_obj, 
+    vars = c(gene, "coral_barcode_numeric"), 
+    layer = "data" 
+  )
   
-  # Generate Ridge Plot (with HACK)
-  p_ridge <- RidgePlot(seurat_obj, features = gene, idents = as.character(top_clones),
-                       sort = "decreasing") +
-    NoLegend() +
-    ggtitle("Expression in Top Largest Clones") +
-    theme(axis.title.y = element_blank()) +
-    ggplot2::theme() # <-- [HACK APPLIED]
+  plot_df_ridge <- plot_df_ridge[plot_df_ridge$coral_barcode_numeric %in% top_clones, ]
+  
+  if(nrow(plot_df_ridge) == 0) {
+      p_ridge <- ggplot() + theme_void() + ggtitle("No cells found for top clones")
+  } else {
+      # Make barcode a factor, ordered by size
+      plot_df_ridge$coral_barcode_numeric <- factor(
+        plot_df_ridge$coral_barcode_numeric, 
+        levels = rev(as.character(top_clones)) # ggridges plots from bottom up
+      )
+      
+      # Plot using ggridges
+      p_ridge <- ggplot(plot_df_ridge, aes(x = .data[[gene]], y = coral_barcode_numeric, fill = coral_barcode_numeric)) +
+        ggridges::geom_density_ridges(scale = 1.5, alpha = 0.7) +
+        scale_fill_viridis_d(option = "C") + 
+        theme_classic() +
+        NoLegend() +
+        ggtitle("Expression in Top Largest Clones") +
+        theme(axis.title.y = element_blank())
+  }
+
 
   # --- [PATCHWORK ASSEMBLY] ---
-  # Use (plot1 + plot2) / (plot3 + plot4) syntax to create a 2x2 grid
   dashboard <- (p_omega + p_umap) / (p_mds + p_ridge)
 
-  # Use plot_annotation() to add the main title
   final_plot <- dashboard + 
     patchwork::plot_annotation(
       title = paste("Comprehensive Analysis of Gene:", gene),
       theme = theme(plot.title = element_text(face = "bold", size = 16, hjust = 0.5))
     )
-  # --- [END OF ASSEMBLY] ---
 
   return(final_plot)
 }
