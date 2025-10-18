@@ -169,6 +169,23 @@ bigSparseDist_pairwise <- function(x, y) {
 #'
 #' @return An updated Seurat object with the analysis results stored in `@misc$CORAL_ground_truth_analysis`.
 #' @export
+#' @title Run the Complete (Optimized) CORAL-base Ground Truth Analysis (v4 - Robust)
+#' @description This is the complete, robustly fixed version of the main CORAL analysis function.
+#' It includes a sanity check for metadata/matrix cell consistency and safeguards against
+#' data dimension reduction errors for single-cell clones.
+#'
+#' @param seurat_obj A Seurat object containing true clone IDs in its metadata.
+#' @param true_barcode_col A string specifying the column name in the metadata that contains the true lineage barcode IDs.
+#' @param clone_size_cutoff An integer. Clones smaller than this size will be excluded from the analysis. Defaults to `2`.
+#' @param num_states An integer. The number of CORAL states (i.e., clone clusters) to create. Defaults to `6`.
+#' @param hclust_method A string specifying the hierarchical clustering method to use. Defaults to `"ward.D"`. See `?hclust` for more options.
+#' @param min_gene_mean A numeric value used to filter out lowly expressed genes in the heritable gene analysis. Defaults to `0.05`.
+#' @param permutation_repeats An integer specifying the number of repeats for the permutation test. Defaults to `5`.
+#' @param n_cores An integer specifying the number of cores to use for parallel processing. Defaults to `parallel::detectCores() - 1`.
+#' @param down_sample A numeric value between 0 and 1 for downsampling clones. Defaults to `1` (no downsampling).
+#'
+#' @return An updated Seurat object with the analysis results stored in `@misc$CORAL_ground_truth_analysis`.
+#' @export
 run_coral_ground_truth_analysis <- function(
     seurat_obj,
     true_barcode_col,
@@ -207,13 +224,13 @@ run_coral_ground_truth_analysis <- function(
 
   # --- 2. OPTIMIZED Clone-Clone Energy Distance Calculation ---
   message("Step 2/6: Calculating clone-clone energy distance (Memory-Optimized)...")
-  
+ 
   # Initial filtering based on metadata counts
   efficient_clones_initial <- barcode_sta_df$BarcodeID[barcode_sta_df$Freq >= clone_size_cutoff]
   if(length(efficient_clones_initial) < 1) stop("No clones found with size >= clone_size_cutoff based on metadata.")
-  
+ 
   efficient_clone_index <- seurat_obj$coral_barcode_numeric %in% efficient_clones_initial
-  
+ 
   if(sum(efficient_clone_index) == 0) {
       stop("No cells remain after filtering for efficient clones. Check for inconsistencies between metadata and assay data.")
   }
@@ -225,17 +242,17 @@ run_coral_ground_truth_analysis <- function(
   message("  - Verifying clone sizes against the expression matrix...")
   true_freq_in_matrix <- as.data.frame(table(barcode_used))
   colnames(true_freq_in_matrix) <- c("BarcodeID", "TrueFreq")
-  
+ 
   barcode_sta_df_merged <- merge(barcode_sta_df, true_freq_in_matrix, by = "BarcodeID", all.x = TRUE)
   barcode_sta_df_merged$TrueFreq[is.na(barcode_sta_df_merged$TrueFreq)] <- 0
-  
+ 
   final_efficient_clones <- barcode_sta_df_merged$BarcodeID[barcode_sta_df_merged$TrueFreq >= clone_size_cutoff]
-  
+ 
   final_clone_number <- length(final_efficient_clones)
   if(final_clone_number < 2) stop(paste("Fewer than 2 clones remaining after verifying sizes against the expression matrix. Initial clones:", length(efficient_clones_initial), "Final clones:", final_clone_number))
-  
+ 
   message(paste("  - Initial clones passing cutoff:", length(efficient_clones_initial), "| Final valid clones after verification:", final_clone_number))
-  
+ 
   final_index_in_barcode_used <- barcode_used %in% final_efficient_clones
   sc_expression <- sc_expression[, final_index_in_barcode_used, drop = FALSE]
   barcode_used <- droplevels(barcode_used[final_index_in_barcode_used]) # droplevels is good practice
@@ -275,7 +292,7 @@ run_coral_ground_truth_analysis <- function(
     row
   }
   parallel::stopCluster(cl)
-  
+ 
   clone_dist <- matrix(0, nrow = final_clone_number, ncol = final_clone_number)
     # The result from foreach is a list of rows, so we combine them into a matrix
     if (is.list(clone_dist_rows)) {
@@ -312,10 +329,10 @@ run_coral_ground_truth_analysis <- function(
 
   # --- 4. OPTIMIZED Heritable Gene Identification ---
   message("Step 4/6: Identifying heritable genes via Omega-squared...")
-  cell_total <- ncol(sc_expression)
+  cell_total <- ncol(sc_expression) # N
   mean_expression <- Matrix::rowMeans(sc_expression)
   SSt <- Matrix::rowSums((sc_expression - mean_expression)^2)
-  lineage_number_actual <- length(unique(barcode_used))
+  lineage_number_actual <- length(unique(barcode_used)) # k
 
   barcode_indices <- split(seq_along(barcode_used), barcode_used)
   lineage_means <- vapply(
@@ -326,8 +343,40 @@ run_coral_ground_truth_analysis <- function(
   SSw <- Matrix::rowSums((sc_expression - lineage_mean_expression)^2)
 
   SS <- data.frame(SSt = SSt, SSw = SSw, SSb = SSt - SSw, Mean = mean_expression, name = rownames(sc_expression))
-  SS$Omega_square <- (SS$SSb / (cell_total - lineage_number_actual)) / (SS$SSt / (cell_total - 1))
-  SS$CV <- sqrt(SS$SSt / SS$Mean) / sqrt(cell_total)
+
+  # --- [START OF FIX] ---
+  # Calculate correct Omega-squared: (SSB - (k-1)*MSW) / (SST + MSW)
+  
+  # Define degrees of freedom
+  df_b <- lineage_number_actual - 1 # k - 1
+  df_w <- cell_total - lineage_number_actual # N - k
+  
+  # Handle potential division by zero if N = k
+  if (df_w == 0) {
+      warning("Degrees of freedom for error (N-k) is 0. Omega-squared calculation may be unstable.")
+      df_w_safe <- 1 # Avoid division by zero
+  } else {
+      df_w_safe <- df_w
+  }
+
+  # Calculate MSW (Mean Square Within)
+  MSw <- SS$SSw / df_w_safe
+  
+  # Calculate Omega-squared components
+  omega_numerator <- SS$SSb - (df_b * MSw)
+  omega_denominator <- SS$SSt + MSw
+  
+  # Avoid division by zero if (SST + MSW) is 0
+  omega_denominator[omega_denominator == 0] <- 1
+  
+  SS$Omega_square <- omega_numerator / omega_denominator
+  
+  # Set negative omega-squared values (F-stat < 1) to 0
+  SS$Omega_square[SS$Omega_square < 0] <- 0
+  
+  # --- [END OF FIX] ---
+  
+  SS$CV <- sqrt(SS$SSt / SS$Mean) / sqrt(cell_total) # This line is fine
   SS_filter <- subset(SS, Mean > min_gene_mean)
   
   message("  - Running parallel permutation test for Omega-squared threshold...")
@@ -344,7 +393,26 @@ run_coral_ground_truth_analysis <- function(
       fake_mean_expr <- fake_means[, match(as.character(barcode_fake), names(fake_indices))]
       SSw_fake <- Matrix::rowSums((sc_expression - fake_mean_expr)^2)
       SSb_fake <- SSt - SSw_fake
-      (SSb_fake / (cell_total - lineage_number_actual)) / (SSt / (cell_total - 1))
+      
+      # --- [START OF PERMUTATION FIX] ---
+      # Use the same correct formula for the permutation test
+      
+      # Use df_w_safe and df_b from the outer scope (they are constants for the test)
+      MSw_fake <- SSw_fake / df_w_safe 
+      
+      omega_num_fake <- SSb_fake - (df_b * MSw_fake) 
+      omega_den_fake <- SSt + MSw_fake
+      
+      # Avoid division by zero
+      omega_den_fake[omega_den_fake == 0] <- 1
+      
+      omega_fake <- omega_num_fake / omega_den_fake
+      
+      # Set negative values to 0 for the null distribution
+      omega_fake[omega_fake < 0] <- 0
+      
+      omega_fake # Return the vector of fake omega-squared values
+      # --- [END OF PERMUTATION FIX] ---
   }
   parallel::stopCluster(cl)
   omega_square_fake <- unlist(omega_square_fake_list)
@@ -380,6 +448,7 @@ run_coral_ground_truth_analysis <- function(
   message("CORAL ground truth analysis complete. Results stored in 'seurat_obj@misc$CORAL_ground_truth_analysis'.")
   return(seurat_obj)
 }
+                          
 
 #' @title Analyze Gene Fluctuation Mode (Highly Optimized)
 #' @description This optimized version performs hierarchical clustering only once,
@@ -400,7 +469,7 @@ analyze_gene_fluctuation <- function(seurat_obj, n_cores = NULL) {
 
     res <- seurat_obj@misc$CORAL_ground_truth_analysis
     clone_dist_E <- res$clone_energy_distance
-    lineage_total <- nrow(clone_dist_E)
+    lineage_total <- nrow(clone_dist_E) # Max number of clones, C_max
 
     heritable_genes_df <- res$heritable_genes_df
     high_F_gene_names <- heritable_genes_df$name[heritable_genes_df$Omega_square > res$heritable_genes_threshold]
@@ -413,13 +482,14 @@ analyze_gene_fluctuation <- function(seurat_obj, n_cores = NULL) {
     sc_expression_ANOVA <- res$internal_data$sc_expression_subset[high_F_gene_names, ]
     barcode_used <- res$internal_data$barcode_used
     barcode_sta_df <- res$clone_statistics
-    cell_total <- length(barcode_used)
+    cell_total <- length(barcode_used) # Total cells, N
     n_genes_anova <- nrow(sc_expression_ANOVA)
 
     message("  - Performing hierarchical clustering once...")
     hclust_result <- stats::hclust(as.dist(clone_dist_E), method = res$parameters$hclust_method)
 
     message("  - Pre-calculating all cluster partitions for gene analysis...")
+    # k = 1:(lineage_total - 1)
     all_partitions_genes <- stats::cutree(hclust_result, k = 1:(lineage_total - 1))
     
     clone_id_map <- match(as.character(barcode_sta_df$BarcodeID), hclust_result$labels)
@@ -434,10 +504,13 @@ analyze_gene_fluctuation <- function(seurat_obj, n_cores = NULL) {
     doParallel::registerDoParallel(cl)
 
     message("  - Calculating SSw across hierarchy levels (lightweight parallel loop)...")
+    # Loop from k=2 to k=(C_max - 1)
     SSw_results_list <- foreach::foreach(
         j = 2:(lineage_total - 1),
         .packages = "Matrix"
     ) %dopar% {
+        # all_partitions_reordered columns are k=1, k=2, ..., k=(C_max - 1)
+        # We need k=j, so we access column j-1
         clone_clusters_j <- all_partitions_reordered[, j-1]
         barcode_cluster_j <- clone_clusters_j[cell_to_clone_map]
 
@@ -455,17 +528,70 @@ analyze_gene_fluctuation <- function(seurat_obj, n_cores = NULL) {
 
     SSw_matrix <- do.call(cbind, SSw_results_list)
 
+    # Get SST (this is SSw for k=1)
     SSt_anova <- heritable_genes_df[high_F_gene_names, "SSt"]
+    # Get SSw for k=lineage_total (k=C_max)
     SSw_anova_last <- heritable_genes_df[high_F_gene_names, "SSw"]
+    
+    # Combine all SSw values into a matrix: k=1, k=2..C_max-1, k=C_max
+    # Dimensions: [n_genes, lineage_total]
     SSw_full_matrix <- cbind(SSt_anova, SSw_matrix, SSw_anova_last)
 
-    lineage_numbers <- 1:lineage_total
+    lineage_numbers <- 1:lineage_total # This is k (number of clusters)
     
-    term1 <- SSt_anova %o% (cell_total - lineage_numbers)
-    term2 <- cell_total * SSw_full_matrix
-    gene_omega_square_matrix <- (term1 - term2) / (term1 + term2)
+    # --- [START OF FIX] ---
+    # Implement the standard ANOVA-based Omega-squared:
+    # omega^2 = (SSB - (k-1)*MSW) / (SST + MSW)
+    # where SSB = SST - SSW and MSW = SSW / (N-k)
 
-    norm_gene_omega_square <- gene_omega_square_matrix / gene_omega_square_matrix[, lineage_total]
+    # Create a matrix for SST (genes x k)
+    SSt_matrix <- SSt_anova %o% rep(1, lineage_total)
+    
+    # Calculate SSB matrix: SSB = SST - SSW
+    SSb_matrix <- SSt_matrix - SSw_full_matrix
+    
+    # Create a matrix for (k-1) [genes x k]
+    k_minus_1_matrix <- matrix(lineage_numbers - 1,
+                               nrow = n_genes_anova,
+                               ncol = lineage_total,
+                               byrow = TRUE)
+                               
+    # Create a vector for (N-k)
+    N_minus_k_vec <- cell_total - lineage_numbers
+    # Avoid division by zero if k = N (highly unlikely, but safe)
+    N_minus_k_vec[N_minus_k_vec == 0] <- 1
+    # Create a matrix for (N-k) [genes x k]
+    N_minus_k_matrix <- matrix(N_minus_k_vec,
+                               nrow = n_genes_anova,
+                               ncol = lineage_total,
+                               byrow = TRUE)
+    
+    # Calculate MSW matrix: MSW = SSW / (N-k)
+    MSW_matrix <- SSw_full_matrix / N_minus_k_matrix
+    
+    # Calculate Numerator: SSB - (k-1)*MSW
+    omega_numerator <- SSb_matrix - (k_minus_1_matrix * MSW_matrix)
+    
+    # Calculate Denominator: SST + MSW
+    omega_denominator <- SSt_matrix + MSW_matrix
+    # Avoid division by zero if SST and MSW are both 0
+    omega_denominator[omega_denominator == 0] <- 1
+    
+    gene_omega_square_matrix <- omega_numerator / omega_denominator
+    
+    # Set any negative omega-squared values (where F < 1) to 0
+    gene_omega_square_matrix[gene_omega_square_matrix < 0] <- 0
+    # --- [END OF FIX] ---
+
+    # Normalize by the omega-squared at the finest level (k = lineage_total)
+    # Handle potential division by zero if the last value is 0
+    norm_factor <- gene_omega_square_matrix[, lineage_total]
+    norm_factor[norm_factor == 0] <- 1 # Avoid division by 0
+    
+    norm_gene_omega_square <- gene_omega_square_matrix / norm_factor
+    
+    # Set k=1 (col 1) to 0, as it's undefined or 0 by definition
+    norm_gene_omega_square[, 1] <- 0
     
     ref_curve <- (0:(lineage_total - 1)) / (lineage_total - 1)
     gene_omega_area <- rowSums(norm_gene_omega_square, na.rm = TRUE) - sum(ref_curve, na.rm = TRUE)
@@ -484,6 +610,7 @@ analyze_gene_fluctuation <- function(seurat_obj, n_cores = NULL) {
     return(seurat_obj)
 }
 
+                          
 #' @title Visualize the Clone Energy Distance Heatmap
 #' @description Creates a heatmap of the clone-clone energy distance matrix, visualizing
 #'   the relationships between clones and the defined CORAL states.
@@ -628,110 +755,6 @@ plot_state_celltype_confusion <- function(seurat_obj, celltype_col, ...) {
     plot_df <- seurat_obj@meta.data[seurat_obj$coral_ground_truth_state != 0, ]
     confusion_matrix <- as.matrix(table(plot_df$coral_ground_truth_state, plot_df[[celltype_col]]))
     ComplexHeatmap::pheatmap(confusion_matrix, scale = "row", cluster_rows = FALSE, cluster_cols = FALSE, ...)
-}
-
-
-#' @title Analyze Gene Fluctuation Mode (Highly Optimized)
-#' @description This optimized version performs hierarchical clustering only once,
-#' then uses cutree() to efficiently get all cluster assignments for calculating
-#' gene-specific fluctuation metrics (`omega_area`).
-#'
-#' @param seurat_obj A Seurat object that has been processed by `run_coral_ground_truth_analysis`.
-#' @param n_cores An integer specifying the number of cores to use for parallel processing.
-#'
-#' @return An updated Seurat object with fluctuation analysis results.
-#'
-#' @export
-analyze_gene_fluctuation <- function(seurat_obj, n_cores = NULL) {
-    if (is.null(seurat_obj@misc$CORAL_ground_truth_analysis)) {
-        stop("Please run 'run_coral_ground_truth_analysis' first.")
-    }
-    message("Starting advanced analysis: Gene Fluctuation Mode (Optimized Version)...")
-
-    res <- seurat_obj@misc$CORAL_ground_truth_analysis
-    clone_dist_E <- res$clone_energy_distance
-    lineage_total <- nrow(clone_dist_E)
-
-    heritable_genes_df <- res$heritable_genes_df
-    high_F_gene_names <- heritable_genes_df$name[heritable_genes_df$Omega_square > res$heritable_genes_threshold]
-
-    if(length(high_F_gene_names) == 0) {
-        warning("No heritable genes found above the threshold. Skipping fluctuation analysis.")
-        return(seurat_obj)
-    }
-
-    sc_expression_ANOVA <- res$internal_data$sc_expression_subset[high_F_gene_names, ]
-    barcode_used <- res$internal_data$barcode_used
-    barcode_sta_df <- res$clone_statistics
-    cell_total <- length(barcode_used)
-    n_genes_anova <- nrow(sc_expression_ANOVA)
-
-    message("  - Performing hierarchical clustering once...")
-    hclust_result <- stats::hclust(as.dist(clone_dist_E), method = res$parameters$hclust_method)
-
-    message("  - Pre-calculating all cluster partitions for gene analysis...")
-    all_partitions_genes <- stats::cutree(hclust_result, k = 1:(lineage_total - 1))
-    
-    clone_id_map <- match(as.character(barcode_sta_df$BarcodeID), hclust_result$labels)
-    all_partitions_reordered <- all_partitions_genes[clone_id_map, ]
-    
-    cell_to_clone_map <- match(barcode_used, barcode_sta_df$BarcodeID)
-    
-    if (is.null(n_cores)) {
-        n_cores <- max(1, parallel::detectCores() - 1)
-    }
-    cl <- parallel::makeCluster(n_cores)
-    doParallel::registerDoParallel(cl)
-
-    message("  - Calculating SSw across hierarchy levels (lightweight parallel loop)...")
-    SSw_results_list <- foreach::foreach(
-        j = 2:(lineage_total - 1),
-        .packages = "Matrix"
-    ) %dopar% {
-        clone_clusters_j <- all_partitions_reordered[, j-1]
-        barcode_cluster_j <- clone_clusters_j[cell_to_clone_map]
-
-        valid_clusters <- sort(unique(barcode_cluster_j))
-        cluster_means <- vapply(valid_clusters, function(k) {
-            Matrix::rowMeans(sc_expression_ANOVA[, barcode_cluster_j == k, drop = FALSE])
-        }, numeric(n_genes_anova))
-        
-        cluster_map <- match(barcode_cluster_j, valid_clusters)
-        mean_expr_mapped <- cluster_means[, cluster_map]
-        
-        Matrix::rowSums((sc_expression_ANOVA - mean_expr_mapped)^2)
-    }
-    parallel::stopCluster(cl)
-
-    SSw_matrix <- do.call(cbind, SSw_results_list)
-
-    SSt_anova <- heritable_genes_df[high_F_gene_names, "SSt"]
-    SSw_anova_last <- heritable_genes_df[high_F_gene_names, "SSw"]
-    SSw_full_matrix <- cbind(SSt_anova, SSw_matrix, SSw_anova_last)
-
-    lineage_numbers <- 1:lineage_total
-    
-    term1 <- SSt_anova %o% (cell_total - lineage_numbers)
-    term2 <- cell_total * SSw_full_matrix
-    gene_omega_square_matrix <- (term1 - term2) / (term1 + term2)
-
-    norm_gene_omega_square <- gene_omega_square_matrix / gene_omega_square_matrix[, lineage_total]
-    
-    ref_curve <- (0:(lineage_total - 1)) / (lineage_total - 1)
-    gene_omega_area <- rowSums(norm_gene_omega_square, na.rm = TRUE) - sum(ref_curve, na.rm = TRUE)
-    gene_omega_area_norm <- gene_omega_area / lineage_total
-
-    seurat_obj@misc$CORAL_ground_truth_analysis$heritable_genes_df$omega_area <- NA
-    match_indices <- match(high_F_gene_names, seurat_obj@misc$CORAL_ground_truth_analysis$heritable_genes_df$name)
-    seurat_obj@misc$CORAL_ground_truth_analysis$heritable_genes_df$omega_area[match_indices] <- gene_omega_area_norm
-    
-    seurat_obj@misc$CORAL_ground_truth_analysis$fluctuation_analysis <- list(
-        gene_omega_square_matrix = gene_omega_square_matrix,
-        normalized_gene_omega_square = norm_gene_omega_square
-    )
-
-    message("Gene fluctuation analysis complete.")
-    return(seurat_obj)
 }
 
 #' @title Visualize Gene Expression on Clone MDS Plot
