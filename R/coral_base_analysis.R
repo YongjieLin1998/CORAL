@@ -30,23 +30,48 @@ utils::globalVariables(c("."))
 
 #' @keywords internal
 bigSparseDist <- function(x) {
-  x <- as.matrix(x)
+  # [FIX]: Removed x <- as.matrix(x)
+  # x is assumed to be a (cells x features) sparse matrix
+  
+  # 1. Calculate the sum of squares for each row (cell). This is efficient on sparse matrices.
   rs2 <- Matrix::rowSums(x^2)
+  
+  # 2. Create the (N x N) dense matrix: sum(x_i^2) + sum(x_j^2)
+  # This is unavoidable as the resulting distance matrix is dense.
   rs2_matrix <- outer(rs2, rs2, "+")
-  x_prod <- tcrossprod(x, 2 * x)
+  
+  # 3. Calculate 2 * (X %*% t(X))
+  # The original tcrossprod(x, 2 * x) is equivalent to 2 * (x %*% t(x))
+  # We explicitly use Matrix::tcrossprod, which supports sparse matrices.
+  x_prod <- Matrix::tcrossprod(x, 2 * x) 
+  
+  # 4. d^2 = (sum(x_i^2) + sum(x_j^2)) - 2 * sum(x_i * x_j)
+  # Use abs() to handle potential tiny negative values due to floating-point precision
   sqrt(abs(rs2_matrix - x_prod))
 }
 
 #' @keywords internal
 bigSparseDist_pairwise <- function(x, y) {
-  x <- as.matrix(x)
-  y <- as.matrix(y)
+  # [FIX]: Removed x <- as.matrix(x) and y <- as.matrix(y)
+  # x is assumed to be (cells_i x features), sparse
+  # y is assumed to be (cells_j x features), sparse
+  
+  # 1. Calculate the sum of squares for each row in x and y, respectively
   rs2_x <- Matrix::rowSums(x^2)
   rs2_y <- Matrix::rowSums(y^2)
+  
+  # 2. Create the (N x M) dense matrix: sum(x_i^2) + sum(y_j^2)
   rs2_matrix <- outer(rs2_x, rs2_y, "+")
-  x_prod <- tcrossprod(x, 2 * y)
+  
+  # 3. Calculate 2 * (X %*% t(Y))
+  # The original tcrossprod(x, 2 * y) is equivalent to 2 * (x %*% t(y))
+  # Matrix::tcrossprod(x, y) is efficient on sparse matrices.
+  x_prod <- Matrix::tcrossprod(x, 2 * y)
+  
+  # 4. d^2 = (sum(x_i^2) + sum(y_j^2)) - 2 * sum(x_i * y_j)
   sqrt(abs(rs2_matrix - x_prod))
 }
+
 
 
 #' @title Run the Complete (Optimized) CORAL-base Ground Truth Analysis
