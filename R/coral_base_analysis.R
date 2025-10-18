@@ -926,69 +926,83 @@ plot_gene_omega_curve <- function(seurat_obj, gene) {
 
 
 
-#' @title Plot Gene Fluctuation Mode
+#' @title Plot Gene Fluctuation Mode (Original Script Logic)
 #' @description Creates a scatter plot visualizing the gene fluctuation mode.
-#' This version includes a reference line for the significance threshold (y-axis)
-#' and allows selecting genes based on this threshold or by the top N.
+#' This version uses the calculated `global_omega_area` as the vertical
+#' reference line, replicating the original manuscript's analysis.
 #'
-#' @param seurat_obj A Seurat object that has been run through `analyze_gene_fluctuation`.
-#' @param selection_method A string specifying how to select genes for plotting.
-#' Can be `"threshold"` (default) to show all genes above the significance threshold,
-#' or `"top_n"` to show a specific number of top genes based on Omega-squared.
-#' @param n_genes_to_show An integer. Used only when `selection_method` is `"top_n"`.
-#' Specifies the number of top genes to display. Defaults to 1000.
+#' @param seurat_obj A Seurat object run through the updated `analyze_gene_fluctuation`.
+#' @param n_genes_to_show An integer. Number of top genes to display.
 #' @param genes_to_highlight A character vector of specific gene names to label.
 #'
 #' @return A ggplot object.
 #' @export
-plot_gene_fluctuation_mode <- function(seurat_obj,
-                                       selection_method = "threshold", # <-- New parameter, set to default
-                                       n_genes_to_show = 1000,
-                                       genes_to_highlight = NULL) {
+plot_gene_fluctuation_mode <- function(seurat_obj, n_genes_to_show = 1000, genes_to_highlight = NULL) {
     if (is.null(seurat_obj@misc$CORAL_ground_truth_analysis$heritable_genes_df$omega_area)) {
         stop("Please run 'analyze_gene_fluctuation' first.")
     }
     
     results <- seurat_obj@misc$CORAL_ground_truth_analysis
+    
+    # --- Read the global_omega_area from the results ---
+    if (is.null(results$global_omega_area)) {
+        warning("`global_omega_area` not found. Using x=0 as a fallback reference line.")
+        global_omega_area_val <- 0
+    } else {
+        global_omega_area_val <- results$global_omega_area
+    }
+
     plot_df <- results$heritable_genes_df
     plot_df <- plot_df[!is.na(plot_df$omega_area), ]
     
-    threshold <- results$heritable_genes_threshold
-
-    # --- [MODIFICATION START] ---
-    # Select filtering logic based on the selection_method parameter
-    if (selection_method == "threshold") {
-        # New logic: filter genes where Omega_square > threshold
-        plot_df_subset <- subset(plot_df, Omega_square > threshold)
-        
-        if(nrow(plot_df_subset) == 0) {
-            message("No genes found above the heritability threshold. The plot will be empty.")
-        }
-        
-    } else if (selection_method == "top_n") {
-        # Original logic: sort by Omega_square and select top n_genes_to_show
-        plot_df <- plot_df[order(-plot_df$Omega_square), ]
-        n_to_show <- min(n_genes_to_show, nrow(plot_df))
-        plot_df_subset <- plot_df[1:n_to_show, ]
-        
-    } else {
-        stop("Invalid 'selection_method'. Please choose 'threshold' or 'top_n'.")
+    # Sort by Omega_square to get the "top" genes
+    plot_df <- plot_df[order(-plot_df$Omega_square), ]
+    
+    # --- [FIX 1]: Robustly handle n_genes_to_show ---
+    # Ensure n_genes_to_show is not negative
+    if (n_genes_to_show < 0) {
+        warning("n_genes_to_show cannot be negative. Setting to 0.")
+        n_genes_to_show <- 0
     }
-    # --- [MODIFICATION END] ---
+    
+    # Use head() to safely subset the top N genes.
+    # head() correctly handles n=0 (returns 0 rows) and
+    # n > nrow(plot_df) (returns all rows).
+    plot_df_subset <- head(plot_df, n = as.integer(n_genes_to_show))
+    
+    # --- [FIX 2 (Key Logic Fix)]: Create label_df from the SUBSET ---
+    # This ensures that only genes within the top n_genes_to_show
+    # are eligible to be labeled.
+    #
+    # [Original Bug]: This line used to be:
+    # label_df <- plot_df[plot_df$name %in% genes_to_highlight, ]
+    # which ignored n_genes_to_show completely for labels.
     
     label_df <- plot_df_subset[plot_df_subset$name %in% genes_to_highlight, ]
+    # --- [End Fixes] ---
 
+    threshold <- results$heritable_genes_threshold
+
+    # The main ggplot call now correctly uses plot_df_subset
     p <- ggplot(plot_df_subset, aes(x = .data$omega_area, y = .data$Omega_square)) +
         geom_hline(yintercept = threshold, linetype = "dashed", color = "red", size = 0.8) +
+        geom_vline(xintercept = global_omega_area_val, linetype = "dashed", color = "black", size = 1) +
+        
+        # This layer (grey points) is now correctly filtered by n_genes_to_show
         geom_point(color = "grey30", size = 2, alpha = 0.8) +
+        
+        # These layers (highlighted points and labels) are now also
+        # correctly filtered by n_genes_to_show because label_df is
+        # derived from plot_df_subset.
         geom_point(data = label_df, color = "salmon", size = 3) +
         ggrepel::geom_label_repel(data = label_df, aes(label = .data$name),
                                   max.overlaps = Inf, color = "salmon4", size = 4) +
+        
         theme_classic() +
         labs(x = "Normalized AUC Shape (omega_area)",
              y = "Lineage Effect Size (Omega-squared)",
              title = "Gene Fluctuation Mode",
-             subtitle = paste("Showing genes with Omega-squared > threshold (", round(threshold, 3), ")", sep=""))
+             subtitle = "Red line: Heritability threshold; Black line: Global fluctuation mode")
     
     return(p)
 }
