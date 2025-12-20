@@ -142,20 +142,6 @@ ComplexHeatmap::draw(ht)
 ![Energy Distance Heatmap](./vignettes/2.png)
 
 
-##### Confusion Matrix: CORAL States vs. Metadata
-This heatmap shows the correspondence between our 6 lineage-defined CORAL states and any other pre-existing cell annotation, such as cell type.
-
-```r
-# Create a confusion matrix heatmap
-# Assumes a 'cell_type' column exists in your metadata
-p_confusion <- plot_state_celltype_confusion(
-  seurat_obj,
-  celltype_col = "startID"
-)
-ComplexHeatmap::draw(p_confusion)
-```
-![confusion matrix](./vignettes/3.png)
-
 
 ##### Heritable Gene Distribution
 This plot is a key diagnostic tool that compares the observed distribution of Omega-squared values (heritability effect size) against the null distribution from permutations.
