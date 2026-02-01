@@ -2,24 +2,18 @@
 % Please edit documentation in R/coral_base_analysis.R
 \name{plot_gene_fluctuation_mode}
 \alias{plot_gene_fluctuation_mode}
-\title{Plot Gene Fluctuation Mode}
+\title{Plot Gene Fluctuation Mode (Original Script Logic)}
 \usage{
 plot_gene_fluctuation_mode(
   seurat_obj,
-  selection_method = "threshold",
   n_genes_to_show = 1000,
   genes_to_highlight = NULL
 )
 }
 \arguments{
-\item{seurat_obj}{A Seurat object that has been run through `analyze_gene_fluctuation`.}
+\item{seurat_obj}{A Seurat object run through the updated `analyze_gene_fluctuation`.}
 
-\item{selection_method}{A string specifying how to select genes for plotting.
-Can be `"threshold"` (default) to show all genes above the significance threshold,
-or `"top_n"` to show a specific number of top genes based on Omega-squared.}
-
-\item{n_genes_to_show}{An integer. Used only when `selection_method` is `"top_n"`.
-Specifies the number of top genes to display. Defaults to 1000.}
+\item{n_genes_to_show}{An integer. Number of top genes to display.}
 
 \item{genes_to_highlight}{A character vector of specific gene names to label.}
 }
@@ -28,6 +22,6 @@ A ggplot object.
 }
 \description{
 Creates a scatter plot visualizing the gene fluctuation mode.
-This version includes a reference line for the significance threshold (y-axis)
-and allows selecting genes based on this threshold or by the top N.
+This version uses the calculated `global_omega_area` as the vertical
+reference line, replicating the original manuscript's analysis.
 }

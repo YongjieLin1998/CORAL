@@ -2,7 +2,7 @@
 % Please edit documentation in R/coral_base_analysis.R
 \name{plot_gene_dashboard}
 \alias{plot_gene_dashboard}
-\title{Create a Comprehensive Gene Analysis Dashboard (Corrected with Patchwork)}
+\title{Create a Comprehensive Gene Analysis Dashboard (ggplot2 Bypass)}
 \usage{
 plot_gene_dashboard(seurat_obj, gene, num_ridge_idents = 12)
 }
@@ -18,6 +18,7 @@ ridge plot. Defaults to 12.}
 A 'patchwork' plot object.
 }
 \description{
-Combines multiple plots for a single gene into one comprehensive view.
-This version uses the 'patchwork' package for robust plot assembly.
+This version completely avoids Seurat's FeaturePlot and RidgePlot
+functions to bypass the internal 'S4SXP' bug in Seurat v5. It plots the
+UMAP and density plots manually using pure ggplot2 and ggridges.
 }

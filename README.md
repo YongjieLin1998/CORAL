@@ -3,9 +3,13 @@
 CORAL (Clone Oriented Reconstruction of Attractors in the Landscape) is a project for heritable cell state identification and gene expression dynamics inference, mainly based on the lineage tracing strategy.
 
 
+
+
 ## Development and Feedback
 
 We are working to improve CORAL and add new functions. Thus, your feedback and suggestions are very welcome. If you need a new specific function or find something not working, just let us know and we'll fix it. 
+
+## Note: 2026.2.1 We have fixed some numeric errors in the 'fluctuation mode analysis' to keep consistency with original papers. Please reload CORAL to ensure everything work well.
 
 Contact: Yongjie Lin (linyjie@pku.edu.cn)
 
@@ -34,13 +38,13 @@ This guide demonstrates the complete `CORAL-base` analysis workflow, assuming yo
 This tutorial assumes you have already loaded your single-cell data into a `Seurat` object named `seurat_obj`. This object **must contain**:
 
 * Normalized expression data (e.g., processed via `Seurat::NormalizeData()`).
-* A metadata column (e.g., `true_clone_id`) that contains the unique lineage barcode or clone identifier for each cell.
+* A metadata column (e.g., `barcode`) that contains the unique lineage barcode or clone identifier for each cell.
 
-* Here we used a published lineage tracing dataset of melanoma cells from [Harmange et.al.2023](https://www.nature.com/articles/s41467-023-41811-8#data-availability)as an example. The dataset is publically available under Gene Expression Omnibus accession number [GSE237228](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE237228).
+* Here we used the A549 dataset we generated as an example. 
 
 First, load the necessary libraries.
 
-```r
+
 # Load required libraries
 library(CORAL)
 library(Seurat)
@@ -62,14 +66,14 @@ The `run_coral_ground_truth_analysis()` function is the core of the workflow. It
 # Run the main CORAL analysis pipeline with 6 states
 seurat_obj <- run_coral_ground_truth_analysis(
   seurat_obj = seurat_obj,
-  true_barcode_col = "true_clone_id", # Specify the clone ID column
-  num_states = 6,                      # Group clones into 6 states
-  permutation_repeats = 100,           # Recommended repeats for robust results
+  true_barcode_col = "barcode", # Specify the clone ID column
+  num_states = 2,                      # Group clones into 6 states
+  permutation_repeats = 5,           # Recommended repeats for robust results
   n_cores = 4                          # Number of cores for parallel processing
 )
 
 # The results are stored in the 'misc' slot of the Seurat object
-results_6_states <- seurat_obj@misc$CORAL_ground_truth_analysis
+results_2_states <- seurat_obj@misc$CORAL_ground_truth_analysis
 ```
 
 #### 3. Iterating and Modifying the Number of States (optional)
@@ -81,16 +85,16 @@ A key part of the analysis is exploring the ideal number of states to describe y
 message("Re-running analysis with 4 states...")
 seurat_obj <- run_coral_ground_truth_analysis(
   seurat_obj = seurat_obj,
-  true_barcode_col = "true_clone_id",
-  num_states = 4, # <-- Changed value
-  permutation_repeats = 100,
-  n_cores = 4
+  true_barcode_col = "barcode",
+  num_states = 6, # <-- Changed value
+  permutation_repeats = 5,
+  n_cores = 6
 )
 
 # Now, all downstream visualizations will use the new 4-state grouping.
 # For example, let's regenerate the MDS plot with updated states:
-p_mds_4_states <- visualize_clone_mds(seurat_obj, color_by = "coral_state")
-print(p_mds_4_states)
+p_mds_6_states <- visualize_clone_mds(seurat_obj, color_by = "coral_state")
+print(p_mds_6_states)
 ```
 
 #### 4. Run Advanced Gene Fluctuation Analysis
@@ -160,7 +164,7 @@ This plot visualizes the relationship between a gene's heritability effect size 
 # Visualize the gene fluctuation mode
 p_fluctuation <- plot_gene_fluctuation_mode(
   seurat_obj,
-  genes_to_highlight = c("EGFR", "ARF5", "CSAG1") # Highlight genes of interest
+  genes_to_highlight = c("CPS1", "CD24", "FGL1") # Highlight genes of interest
 )
 print(p_fluctuation)
 ```
