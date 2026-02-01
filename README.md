@@ -92,7 +92,7 @@ seurat_obj <- run_coral_ground_truth_analysis(
   n_cores = 6
 )
 
-# Now, all downstream visualizations will use the new 4-state grouping.
+# Now, all downstream visualizations will use the new 6-state grouping.
 # For example, let's regenerate the MDS plot with updated states:
 p_mds_6_states <- visualize_clone_mds(seurat_obj, color_by = "coral_state")
 print(p_mds_6_states)
@@ -137,10 +137,10 @@ my_split_umap <- visualize_coral_states_split_umap(seurat_obj, ncol = 2, pt.size
 
 
 ##### Clone Energy Distance Heatmap
-This heatmap displays the transcriptional similarity between all clones. The clustering reveals clone groupings, which are now partitioned into 4 CORAL states.
+This heatmap displays the transcriptional similarity between all clones. The clustering reveals clone groupings, which are now partitioned into 6 CORAL states.
 
 ```r
-# Visualize the clone-clone energy distance matrix with 4 states  
+# Visualize the clone-clone energy distance matrix with 6 states  
 ht <- visualize_clone_distance_heatmap(seurat_obj)
 ComplexHeatmap::draw(ht)
 ```
