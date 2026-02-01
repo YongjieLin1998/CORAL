@@ -1077,7 +1077,7 @@ visualize_coral_states_split_umap <- function(seurat_obj, ...) {
 #' @export
 #' @import patchwork
 #' @import ggplot2
-#' @import ggridges  # We need this package for the ridge plot
+#' @import ggridges  
 
 plot_gene_dashboard <- function(seurat_obj,
                                 gene,
