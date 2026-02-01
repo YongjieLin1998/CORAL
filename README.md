@@ -9,7 +9,7 @@ CORAL (Clone Oriented Reconstruction of Attractors in the Landscape) is a projec
 
 We are working to improve CORAL and add new functions. Thus, your feedback and suggestions are very welcome. If you need a new specific function or find something not working, just let us know and we'll fix it. 
 
-## Note: 2026.2.1 We have fixed some numeric errors in the 'fluctuation mode analysis' to keep consistency with original papers. Please reload CORAL to ensure everything work well.
+Note: 2026.2.1 We have fixed some numeric errors in the 'fluctuation mode analysis' to keep consistency with original papers. Please reload CORAL to ensure everything work well.
 
 Contact: Yongjie Lin (linyjie@pku.edu.cn)
 
@@ -46,17 +46,18 @@ First, load the necessary libraries.
 
 
 # Load required libraries
+
+```r
 library(CORAL)
 library(Seurat)
 library(ComplexHeatmap)
 library(ggplot2)
 library(ggpubr)
-
-# This guide assumes `seurat_obj` is already in your environment.
-# Let's inspect its metadata to confirm the required columns are present.
-# The output should show columns like 'true_clone_id'. 
-head(seurat_obj@meta.data)
 ```
+
+This guide assumes `seurat_obj` is already in your environment.
+Let's inspect its metadata to confirm the required columns are present.
+The output should show columns like 'true_clone_id'. 
 
 #### 2. Run the Core CORAL Analysis
 
